@@ -1,0 +1,24 @@
+# Generated
+build/
+dist/
+Run/*
+!Run/*.cmd
+config/
+__pycache__/
+*.pyc
+
+# The original game.  Not redistributable - supply your own copy, see README.
+reference/
+
+# Everything derived from the original binary: the disassembly, the string and
+# class dumps, and the HRTF table.  All regenerable from your own copy with the
+# scripts in tools/.
+tools/dis/
+tools/ps_strings.txt
+tools/classdump.txt
+tools/embedded_hrtf.dat
+
+# Third-party, downloaded rather than committed
+vendor/openal-soft-*-bin/
+vendor/openal-soft-bin.zip
+vendor/makemhr/
