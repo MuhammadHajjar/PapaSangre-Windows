@@ -7,16 +7,28 @@ config/
 __pycache__/
 *.pyc
 
-# The original game.  Not redistributable - supply your own copy, see README.
-reference/
+# The original game.  The data the port runs on is committed - audio, maps,
+# playlists, the message and object lists, and the HRTF table - so a clone
+# builds and plays with nothing else to find.  Their compiled binary, code
+# signature, artwork and nibs are not: none of them is needed here.
+reference/*
+!reference/Payload/
+reference/Payload/*
+!reference/Payload/Papa Sangre.app/
+reference/Payload/Papa Sangre.app/*
+!reference/Payload/Papa Sangre.app/ps1/
+!reference/Payload/Papa Sangre.app/Exports/
+!reference/Payload/Papa Sangre.app/meta/
+!reference/Payload/Papa Sangre.app/*.wav
+!reference/Payload/Papa Sangre.app/*.m4a
+!reference/Payload/Papa Sangre.app/*.plist
 
-# Everything derived from the original binary: the disassembly, the string and
-# class dumps, and the HRTF table.  All regenerable from your own copy with the
-# scripts in tools/.
+# Derived from the original binary and regenerable with the scripts in tools/.
+# The HRTF table is the exception: it is committed, so nobody has to have the
+# binary to build.
 tools/dis/
 tools/ps_strings.txt
 tools/classdump.txt
-tools/embedded_hrtf.dat
 
 # Third-party, downloaded rather than committed
 vendor/openal-soft-*-bin/

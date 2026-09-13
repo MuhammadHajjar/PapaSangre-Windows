@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.0" orientation="orthogonal" width="100" height="100" tilewidth="1" tileheight="1">
+ <tileset firstgid="1" name="spritesheet-hd" tilewidth="20" tileheight="20" spacing="5">
+  <tileoffset x="5" y="5"/>
+  <image source="Images/spritesheet-hd.png" width="72" height="96"/>
+ </tileset>
+ <tileset firstgid="13" name="spritesheet-hd" tilewidth="20" tileheight="20" spacing="5">
+  <tileoffset x="5" y="5"/>
+  <image source="Images/spritesheet-hd.png" width="72" height="96"/>
+ </tileset>
+ <objectgroup name="Level Layer" width="100" height="100">
+  <object type="Room" x="-172" y="-35" width="240" height="236">
+   <properties>
+    <property name="OnEnter" value="PGE_MESSAGE_DisableHands"/>
+   </properties>
+  </object>
+  <object type="Player" gid="5" x="-59" y="92">
+   <properties>
+    <property name="pixelsPerStep" value="5"/>
+    <property name="startAngle" value="90"/>
+   </properties>
+  </object>
+  <object name="reckoner1" type="Sound" gid="11" x="-121" y="58">
+   <properties>
+    <property name="active" value="YES"/>
+    <property name="looping" value="YES"/>
+    <property name="soundList" value="01"/>
+    <property name="spatialized" value="YES"/>
+   </properties>
+  </object>
+  <object name="reckoner1" type="Sound" gid="11" x="-59" y="26">
+   <properties>
+    <property name="active" value="YES"/>
+    <property name="looping" value="YES"/>
+    <property name="soundList" value="02"/>
+    <property name="spatialized" value="YES"/>
+   </properties>
+  </object>
+  <object name="reckoner1" type="Sound" gid="11" x="1" y="58">
+   <properties>
+    <property name="active" value="YES"/>
+    <property name="looping" value="YES"/>
+    <property name="soundList" value="03"/>
+    <property name="spatialized" value="YES"/>
+   </properties>
+  </object>
+  <object name="reckoner1" type="Sound" gid="11" x="1" y="129">
+   <properties>
+    <property name="active" value="YES"/>
+    <property name="looping" value="YES"/>
+    <property name="soundList" value="04"/>
+    <property name="spatialized" value="YES"/>
+   </properties>
+  </object>
+  <object name="reckoner1" type="Sound" gid="11" x="-58" y="160">
+   <properties>
+    <property name="active" value="YES"/>
+    <property name="looping" value="YES"/>
+    <property name="soundList" value="05"/>
+    <property name="spatialized" value="YES"/>
+   </properties>
+  </object>
+  <object name="reckoner1" type="Sound" gid="11" x="-118" y="128">
+   <properties>
+    <property name="active" value="YES"/>
+    <property name="looping" value="YES"/>
+    <property name="soundList" value="06"/>
+    <property name="spatialized" value="YES"/>
+   </properties>
+  </object>
+ </objectgroup>
+ <objectgroup name="ToolBar" width="100" height="100">
+  <object x="-513" y="-167" width="102" height="229"/>
+  <object type="Monster" x="-497" y="-98">
+   <polyline points="0,0 16,62 39,8 47,64 69,2 65,66"/>
+  </object>
+  <object name="Comments" type="Comment" x="-506" y="113" width="90" height="7">
+   <properties>
+    <property name="Goal" value="The player has to walk on a surface to activate the first button. Then, he'll have to collect 3 collectibles"/>
+   </properties>
+  </object>
+  <object name="npc1" type="NPC" gid="10" x="-444" y="-134"/>
+  <object type="Monster" gid="6" x="-482" y="-135">
+   <properties>
+    <property name="OnShoot" value=""/>
+    <property name="SoundList" value=""/>
+   </properties>
+  </object>
+  <object type="Collectible" gid="3" x="-507" y="-105"/>
+  <object type="Sound" gid="11" x="-508" y="-134">
+   <properties>
+    <property name="OnSoundEnd" value=""/>
+    <property name="soundList" value="sound1;sound2;sound3"/>
+   </properties>
+  </object>
+  <object type="Player" gid="5" x="-464" y="-104"/>
+  <object type="Surface" x="-495" y="-17" width="64" height="39">
+   <properties>
+    <property name="OnEnter" value=""/>
+    <property name="OnExit" value=""/>
+    <property name="OnStep" value=""/>
+   </properties>
+  </object>
+ </objectgroup>
+</map>

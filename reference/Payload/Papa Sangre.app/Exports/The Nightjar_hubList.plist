@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Nightjar - 1</key>
+	<dict>
+		<key>altName</key>
+		<string>New Ears</string>
+		<key>completed</key>
+		<false/>
+		<key>fileName</key>
+		<string>nightJar_1</string>
+		<key>imageName</key>
+		<string>NJ_level-1-in-the-dark.png</string>
+		<key>positionInMenu</key>
+		<integer>1</integer>
+		<key>title</key>
+		<string>Nightjar lvl 1: New Ears</string>
+		<key>unlocked</key>
+		<true/>
+	</dict>
+	<key>Nightjar - 2</key>
+	<dict>
+		<key>altName</key>
+		<string>Walk This Way</string>
+		<key>completed</key>
+		<false/>
+		<key>fileName</key>
+		<string>nightJar_2</string>
+		<key>imageName</key>
+		<string>NJ_level-2-in-the-dark.png</string>
+		<key>positionInMenu</key>
+		<integer>2</integer>
+		<key>title</key>
+		<string>Nightjar lvl 2: Walk This Way</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 3</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>A Brief History of Earth</string>
+		<key>fileName</key>
+		<string>nightJar_3</string>
+		<key>imageName</key>
+		<string>NJ_level-3-see-with-your-ears.png</string>
+		<key>positionInMenu</key>
+		<integer>3</integer>
+		<key>title</key>
+		<string>Nightjar lvl 3: A Brief History of Earth</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 4</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Life Support</string>
+		<key>fileName</key>
+		<string>nightJar_4</string>
+		<key>imageName</key>
+		<string>NJ_level-4-soul-music.png</string>
+		<key>positionInMenu</key>
+		<integer>4</integer>
+		<key>title</key>
+		<string>Nightjar lvl 4: Life Support</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 5</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Behind You</string>
+		<key>fileName</key>
+		<string>nightJar_5</string>
+		<key>imageName</key>
+		<string>NJ_level-5-soul-music.png</string>
+		<key>positionInMenu</key>
+		<integer>5</integer>
+		<key>title</key>
+		<string>Nightjar lvl 5: Behind You</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 6</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Creep</string>
+		<key>fileName</key>
+		<string>nightJar_6</string>
+		<key>imageName</key>
+		<string>NJ_level-6-the-kennel.png</string>
+		<key>positionInMenu</key>
+		<integer>6</integer>
+		<key>title</key>
+		<string>Nightjar lvl 6: Creep</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 7</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Dark Matters</string>
+		<key>fileName</key>
+		<string>nightJar_7</string>
+		<key>imageName</key>
+		<string>NJ_level-7-hog-patrol.png</string>
+		<key>positionInMenu</key>
+		<integer>7</integer>
+		<key>title</key>
+		<string>Nightjar lvl 7: Dark Matters</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 8</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Human Waste</string>
+		<key>fileName</key>
+		<string>nightJar_8</string>
+		<key>imageName</key>
+		<string>NJ_level-75-bed-of-bones.png</string>
+		<key>positionInMenu</key>
+		<integer>8</integer>
+		<key>title</key>
+		<string>Nightjar lvl 8: Human Waste</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 9</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Green Eggs and Slime</string>
+		<key>fileName</key>
+		<string>nightJar_9</string>
+		<key>imageName</key>
+		<string>NJ_level-8-charnel-pits.png</string>
+		<key>positionInMenu</key>
+		<integer>9</integer>
+		<key>title</key>
+		<string>Nightjar lvl 9: Green Eggs and Slime</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 10</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Trust Nothing</string>
+		<key>fileName</key>
+		<string>nightJar_10</string>
+		<key>imageName</key>
+		<string>NJ_level-9-the-grin-reaper.png</string>
+		<key>positionInMenu</key>
+		<integer>10</integer>
+		<key>title</key>
+		<string>Nightjar lvl 10: Trust Nothing</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 11</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Deep Space</string>
+		<key>fileName</key>
+		<string>nightJar_11</string>
+		<key>imageName</key>
+		<string>NJ_level-10-zoo.png</string>
+		<key>positionInMenu</key>
+		<integer>11</integer>
+		<key>title</key>
+		<string>Nightjar lvl 11: Deep Space</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 12</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Exit Pursued by an Alien</string>
+		<key>fileName</key>
+		<string>nightJar_12</string>
+		<key>imageName</key>
+		<string>NJ_level-11-soul-music.png</string>
+		<key>positionInMenu</key>
+		<integer>12</integer>
+		<key>title</key>
+		<string>Nightjar lvl 12: Exit Pursued by an Alien</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 13</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>A Jar of Dark</string>
+		<key>fileName</key>
+		<string>nightJar_13</string>
+		<key>imageName</key>
+		<string>NJ_level-12-bedtime.png</string>
+		<key>positionInMenu</key>
+		<integer>13</integer>
+		<key>title</key>
+		<string>Nightjar lvl 13: A Jar of Dark</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+	<key>Nightjar - 14</key>
+	<dict>
+		<key>completed</key>
+		<false/>
+		<key>altName</key>
+		<string>Choose Death</string>
+		<key>fileName</key>
+		<string>nightJar_14</string>
+		<key>imageName</key>
+		<string>NJ_level-13-elysium.png</string>
+		<key>positionInMenu</key>
+		<integer>14</integer>
+		<key>title</key>
+		<string>Nightjar lvl 14: Choose Death</string>
+		<key>unlocked</key>
+		<false/>
+	</dict>
+</dict>
+</plist>
