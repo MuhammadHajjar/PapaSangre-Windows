@@ -11,23 +11,23 @@ journal of how each piece was recovered; `DIVERGENCES.md` lists everything that
 had to differ and why; `GAME_STRUCTURE.md` is the recovered structure of the
 game itself.
 
-## The game's assets are not in this repository
+## Building
 
-Only the port is here. The levels, audio, playlists and HRTF belong to Somethin'
-Else and are not redistributable, so you supply them yourself from your own copy
-of the original app:
+Everything the game runs on is in here: the audio, the Tiled map exports, the
+S3D playlists, the message and object lists, and the HRTF table. Clone it and
+build, there is nothing else to find.
 
-    reference/Payload/Papa Sangre.app/        the unzipped .ipa
-
-Everything the build needs is derived from that, by the scripts in `tools/`:
-
-    python tools/extract_hrtf.py      the IRCAM HRTF table out of the binary
-    python tools/psdis.py .           the arm64 disassembly (optional, for RE)
     python tools/build_exes.py        the .exe files, into Run/
 
-`build_exes.py` also wants `vendor/makemhr/makemhr.exe` (from openal-soft's
-tools) to turn the extracted HRTF into an `.mhr`, and `vendor/openal/soft_oal.dll`,
-which is committed.
+`build_exes.py` wants `vendor/makemhr/makemhr.exe` (from openal-soft's tools)
+to turn the HRTF table into an `.mhr`; `vendor/openal/soft_oal.dll` is
+committed.
+
+The original's compiled binary is *not* here, and two scripts want it:
+`tools/extract_hrtf.py`, which is how `tools/embedded_hrtf.dat` was pulled out
+in the first place, and `tools/psdis.py`, which produces the arm64 disassembly
+the port was reverse-engineered from. Neither is needed to build or play. Drop
+the app at `reference/Payload/Papa Sangre.app/` if you want to run them.
 
 ## Running from source
 
