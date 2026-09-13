@@ -956,3 +956,56 @@ def test_one_press_of_enter_only_chooses_once():
     src = BothAtOnce([Action.CONFIRM.value, Action.CANCEL.value], key='z')
     play.run_menu(keys_menu(km), src, FakeRep(), FakeClock(), None, None, km)
     assert src.captured == 1, f'asked for a key {src.captured} times'
+
+
+# ------------------------------------------------- the end of the game
+def test_finishing_the_game_goes_to_the_menu_instead_of_closing():
+    """Reported after 1.0.0: "When you finish the last scene, the game
+    crashes".  It was not a crash, it was the process ending the moment
+    ps1_25 sent PresentAdiosVC, which from the player's side is the same
+    thing.  Finishing now hands you back to the main menu.
+    """
+    from papasangre.save import GameProgress                      # noqa: PLC0415
+    play = load_play()
+    progress = GameProgress(path=os.path.join(tempfile.mkdtemp(), 'p.json'))
+
+    class FakeGame:
+        level_name = 'ps1_25'
+        level = None
+        bank = None
+
+    seen = {}
+
+    def fake_shell(game, src, rep, clock, engine, settings, prog, base,
+                   keymap=None, padmap=None):
+        seen['reached'] = True
+        return 'ps1_3'
+
+    real, play.shell = play.shell, fake_shell
+    try:
+        out = play.after_game_complete(FakeGame(), FakeSource([]), FakeRep(),
+                                       FakeClock(), None, None, progress, '')
+    finally:
+        play.shell = real
+    assert seen.get('reached'), 'the main menu has to open'
+    assert out == 'ps1_3', 'and what it returns is what you play next'
+    assert progress.is_level_completed('ps1_25'), 'the last level counts too'
+
+
+def test_quitting_from_that_menu_still_ends_the_game():
+    from papasangre.save import GameProgress                      # noqa: PLC0415
+    play = load_play()
+    progress = GameProgress(path=os.path.join(tempfile.mkdtemp(), 'p.json'))
+
+    class FakeGame:
+        level_name = 'ps1_25'
+        level = None
+        bank = None
+
+    real, play.shell = play.shell, lambda *a, **k: None
+    try:
+        out = play.after_game_complete(FakeGame(), FakeSource([]), FakeRep(),
+                                       FakeClock(), None, None, progress, '')
+    finally:
+        play.shell = real
+    assert out is None
