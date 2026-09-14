@@ -33,6 +33,9 @@ Nothing currently outstanding.
 | what | where | status |
 |---|---|---|
 | Foot alternation (`updateFeetView:` holds the used foot `"off"` for 2 s) | every level | **fixed** 2026-09-08 |
+| `playSound:looping:` returns the sound's duration and state 6 feeds it to `setDistractedTime:` (0x10001dc20) — the port kept the level's own `distractedTime`, so an enemy that lost you stood there silent for the balance of it (10 s by default, 90 s in ps1_15) instead of giving up as its grunt ended | every level with an enemy | **fixed** 2026-09-14 |
+| The little girl's scream: `dilemma_girl_monsterprox`, **hardcoded in `alertEnemy:`** at 0x10001e274 and named in no level's data, played once per approach off the `withinRadius` edge | ps1_18 | **fixed** 2026-09-14 |
+| An enemy in state 6 with no `attackSound` borrows its `chaseSound` and keeps it (`setAttackSound:`, 0x10001d518), playing it looping | ps1_23 | **fixed** 2026-09-14 |
 | `PGE_ACTION_Shuffle` and `-[PGEPlayer shuffle]` | every level, 24 assets | **fixed** 2026-09-08 |
 | Wall-collision sound: the `@"hitwall"` fallback at 0x100032ea0 | every level (**no level sets `hitWallSound`**) | **fixed** 2026-09-08 |
 | `OnLoad` never fired — `-[PGEGameAgent levelInited:]` was not ported | 8 monsters across 7 levels hang their opening move on it | **fixed** 2026-09-08 |
@@ -178,7 +181,36 @@ gets about two frames before the roar takes over.
 
 ## 4c. REQUESTED — asked for, knowing it is a change
 
-The one place the port deliberately does not sound like Papa Sangre.
+The places the port deliberately does not sound like Papa Sangre.
+
+### ps1_17's third note is given a voice
+
+`note3` in *Papa Sangre Says* is the **only collectible in the game with an
+empty `loopSound`**, and ps1_17's playlist is the only one of the five brass
+levels that does not carry the d note at all. Every sibling — 13, 14, 15, 16,
+18 — gives its third note `note_brass_01_dry_d_living_+5`. So the note is
+there and cannot be heard: you follow the summoner's voice onto a thing that
+makes no sound. The port reproduced that faithfully until a player reported
+it. `Level.apply_missing_third_note` now hands the note the file its siblings
+use, the same way the telephone door is handed one.
+
+**This is a bug in the original's data, and filling it in is a change.**
+
+### A level shutdown sweeps until nothing is left running
+
+`deactivate` fires an agent's `OnDeactivate` whether or not it was ever active
+(0x10002049c is an unconditional tail call), and those triggers activate other
+agents — ps1_23's `chicken_1` re-arms the cage launcher every time it goes
+quiet. When that lands on an agent the shutdown has already passed, the agent
+comes back to life behind the sweep and its loop plays on over the closing
+narration. A player hit exactly that at the ice lake exit with the chickens
+still caged.
+
+The original walks `agentArray` once (0x1000347e4) and nils each agent's
+delegate afterwards, but that delegate gates only a collectible's *collect*
+sound — the sole game-side read of it is in `playCollectSound` — so it is not
+what would silence a loop. Rather than leave a looping alarm running into the
+next level, `_on_shut_down` repeats the sweep while anything is still active.
 
 ### Outdoor levels get their own reverb
 

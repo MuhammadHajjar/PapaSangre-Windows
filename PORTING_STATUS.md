@@ -113,6 +113,71 @@ closing so a failure is never a window that flashes past.
 
 ## Progress log
 
+### 2026-09-14 - what players found, and the hog that deleted itself
+
+Two people played the whole game and reported. Six things between them; four
+were real, and one of those four is the most consequential bug the port has
+had.
+
+**A hog that loses you goes silent and stops mattering.** Both players felt
+it, one of them as "I kind of breezed through it" and the other as "it just
+sits there, then resets". `-[PGEEnemy playSound:looping:]` **returns the
+duration of the sound it started** - both exits read it off `duration`,
+0x10001e8a4 for the early-out and 0x10001eb14 for the normal path - and state
+6 passes that straight to `setDistractedTime:` at 0x10001dc20. So a searching
+enemy gives up exactly as its "not there" grunt ends, and its patrol loop is
+back in the same breath. The port threw the return away and kept the level's
+own `distractedTime`, which meant a hog grunted for two seconds and then stood
+in silence for the remaining eight - or, in ps1_15, eighty-eight. Silent and
+stationary is the same thing as absent, which is why the game got easy.
+
+Worth recording that the level data's `distractedTime` is **dead** once an
+enemy has searched once: state 6 overwrites it before the comparison that
+reads it, every time. Six levels carry a value (2, 5, 5, 20, 30, 90) and none
+of them decides anything.
+
+**The little girl never screamed.** Carrying her applies a proximity radius to
+you (`ApplyProximityRadiusToPlayer:value=40`, the only place ps1_18 mentions
+the mechanic) and every step then asks who is near. The scream itself is
+`dilemma_girl_monsterprox` - **hardcoded in `alertEnemy:` at 0x10001e274 and
+named in no level's data at all**. The only way to find it is to read the
+enemy's alert path, or to notice a file in `ps1/` that nothing references.
+`withinRadius` is an edge latch (0x10001e254 skips the scream when it is
+already set, 0x10001e2b8 sets it either way), so she gives you away once per
+approach rather than once per step.
+
+**The third note of Papa Sangre Says cannot be heard, and that one is the
+original's fault.** ps1_17's `note3` is the only collectible in the game with
+an empty `loopSound`, and ps1_17's playlist is the only one of the five brass
+levels that does not carry the d note. Every sibling level uses
+`note_brass_01_dry_d_living_+5`. The player's description was precise: you
+collect it by following the summoner's voice and never hear the note. Filling
+it in is a change, not a recovery, and is in DIVERGENCES.md as one.
+
+**The ice lake cage keeps ringing after you leave.** `deactivate` fires
+`OnDeactivate` whether or not the agent was ever active - 0x10002049c is an
+unconditional tail call - and ps1_23's `chicken_1` answers that by re-arming
+the cage launcher. During a shutdown that lands behind the sweep, so the
+launcher comes back to life with its alarm looping and nothing left to stop
+it. The player even gave the condition: only with the chickens still caged,
+because a released `chicken_1` has re-armed the launcher earlier and the sweep
+then finds it the ordinary way. A first attempt at this copied the original's
+`[agent setDelegate:nil]` (0x1000348d8) and broke every failure narration in
+the game, which was the useful part: the delegate gates a collectible's
+*collect* sound and nothing else - the only game-side read is in
+`playCollectSound` - so it was never what silenced a loop. The sweep repeats
+instead, and that is a port-side fix.
+
+**Two reports where the binary disagrees with the player, left alone.** The
+lost souls' listen radius is `alertDistance`, no level sets it, and both
+`-[PGEDilemma init]` and the port use 100. The "don't leave me" line loops
+because `-[PGEDilemma playSound:]` passes 1 to `play:` unconditionally
+(0x1000457c8) and `checkCollisionsWithPlayer` has no path from abandoned back
+to resting - states 8/9/10/11, and 8 is reachable only from 9. Changing either
+would be inventing a switch, so both are questions rather than commits.
+
+---
+
 ### 2026-09-13 - the shipping pass: what a player actually meets
 
 Two days of Muhammad playing the release build and reporting what was wrong

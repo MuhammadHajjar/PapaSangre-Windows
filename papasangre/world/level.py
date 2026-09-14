@@ -163,6 +163,7 @@ class Level(Surface):
 
         self.apply_reverb_profile()
         self.apply_telephone_door()
+        self.apply_missing_third_note()
 
         # -[PGELevel actuallyLoadDataFromJsonFile] posts this once the three
         # passes are done; every agent answers it by firing its OnLoad.
@@ -203,6 +204,40 @@ class Level(Surface):
             return ''
         door.loop_sound = self.TELEPHONE_DOOR
         return self.TELEPHONE_DOOR
+
+    # ------------------------------------------------------ ps1_17's note3
+    #: ps1_17's ``note3`` is the only collectible in the whole game with an
+    #: empty ``loopSound``, and ps1_17's playlist is the only one of the five
+    #: brass levels that does not carry the d note at all.  Every other level
+    #: in that set - 13, 14, 15, 16, 18 - gives its third note
+    #: ``note_brass_01_dry_d_living_+5``.  So the note is there, and audibly
+    #: is not: you follow the summoner's voice onto a thing you cannot hear.
+    #:
+    #: **This is a bug in the original's data, and filling it in is a
+    #: divergence** - the port reproduced the silence faithfully until a
+    #: player reported it.  See DIVERGENCES.md.
+    THIRD_NOTE_LEVEL = 'ps1_17'
+    THIRD_NOTE_AGENT = 'note3'
+    THIRD_NOTE = 'note_brass_01_dry_d_living_+5'
+    THIRD_NOTE_PATH = 'ps1/spatialized/note_brass_01_dry_d_living_+5.m4a'
+
+    def apply_missing_third_note(self) -> str:
+        """Give ps1_17's third note the voice its siblings all have."""
+        if self.name != self.THIRD_NOTE_LEVEL:
+            return ''
+        note = None
+        for a in self.agents:
+            if isinstance(a, Collectible) and a.name == self.THIRD_NOTE_AGENT:
+                note = a
+                break
+        if note is None or note.loop_sound:
+            return ''
+        ensure = getattr(self.bank, 'ensure', None)
+        if ensure is None or not ensure(self.THIRD_NOTE,
+                                        self.THIRD_NOTE_PATH, True):
+            return ''
+        note.loop_sound = self.THIRD_NOTE
+        return self.THIRD_NOTE
 
     # ---------------------------------------------------------- reverb
     def apply_reverb_profile(self) -> str:
@@ -430,11 +465,31 @@ class Level(Surface):
         frozen.  The sender is spared so the thing you just walked into can
         finish speaking - which is exactly what stops the "are you still there"
         nag from talking over the closing narration.
+
+        **The sweep is repeated until nothing is left running, and that part
+        is a port-side fix** (see DIVERGENCES.md).  ``deactivate`` fires the
+        agent's ``OnDeactivate`` whether or not it was active (0x10002049c, an
+        unconditional tail call), and those triggers activate other agents:
+        ps1_23's ``chicken_1`` re-arms the cage launcher every time it goes
+        quiet.  Landing on an agent the sweep has already passed brings it back
+        to life *behind* the sweep, and its alarm loop then plays on over the
+        closing narration - which is what a player hit at the ice lake exit
+        with the chickens still caged.  The original walks the array once
+        (fast enumeration over ``agentArray``, 0x1000347e4) and nils each
+        agent's delegate, but that delegate only gates a collectible's
+        *collect* sound (the sole game-side read is in ``playCollectSound``),
+        so it cannot be what silences a loop.  Rather than leave a looping
+        alarm running into the next level, the sweep runs again while anything
+        is still active.
         """
         self.shutting_down = True
         sender = params.get('senderName')
-        for a in self.agents:
-            if a.name != sender:
+        for _ in range(4):
+            running = [a for a in self.agents
+                       if a.name != sender and (a.active or a.sound is not None)]
+            if not running:
+                break
+            for a in running:
                 a.deactivate()
         if self._inactivity_sound is not None and self._inactivity_sound.playing:
             self._inactivity_sound.stop()

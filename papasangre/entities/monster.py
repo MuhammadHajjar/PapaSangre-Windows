@@ -63,6 +63,10 @@ STATE_NAMES = {
 #: -[PGEEnemy update:] state 12 schedules changeStateTo:5 with afterDelay 1.0.
 AGENT_ALERT_DELAY = 1.0
 
+#: 0x10001e274 - the one sound name ``PGEEnemy`` carries itself instead of
+#: taking from the level data.  See :meth:`Monster.play_proximity_scream`.
+GIRL_PROXIMITY_SOUND = 'dilemma_girl_monsterprox'
+
 
 class Monster(GameAgent):
     """A ``PGEEnemy``: idle until something alerts it, then it comes for you."""
@@ -102,6 +106,7 @@ class Monster(GameAgent):
 
         self.spatialized = True          # every monster sound is positioned
         self._current_sound_name = ''
+        self._proximity_sound = None     # the girl's scream, held so it lives
 
         for msg, handler in (
             ('PGE_MESSAGE_AlertAllEnemies', self._on_alert_all),
@@ -116,26 +121,36 @@ class Monster(GameAgent):
         self.state = int(state)
 
     # -------------------------------------------------------------- sound
-    def play_sound(self, name: str, looping: bool = True) -> None:
-        """``-[PGEEnemy playSound:looping:]`` - swap the looping voice."""
+    def play_sound(self, name: str, looping: bool = True) -> float:
+        """``-[PGEEnemy playSound:looping:]`` - swap the looping voice.
+
+        **Returns how long the sound now playing lasts**, and that return is
+        not decoration: state 6 passes it straight to ``setDistractedTime:``
+        (0x10001dc20), so how long an enemy that has lost you stands there is
+        the length of its own "not there" grunt and nothing else.  Both exits
+        return it - the early-out reads ``duration`` off the sound already
+        playing at 0x10001e8a4, the normal path off the new one at
+        0x10001eb14.
+        """
         if self.bank is None or not name:
-            return
+            return 0.0
         # The guard is on the **name alone** - the original never asks whether
         # the sound is still playing (0x10001e878).  That matters in state 7,
         # where the sound is stopped every frame and this refuses to restart it.
         if name == self._current_sound_name:
-            return
+            return float(getattr(self.sound, 'duration', 0.0) or 0.0)
         if self.sound is not None:
             self.sound.stop()
         sound = self.bank.sound(name)
         if sound is None:
-            return
+            return 0.0
         self.sound = sound
         self._current_sound_name = name
         sound.spatialized = True
         sound.looping = looping
         self.update_spatialized_sound()
         sound.play()
+        return float(getattr(sound, 'duration', 0.0) or 0.0)
 
     # ------------------------------------------------------------- alerts
     def alert(self, to: str, position=None, chase_time: float = 0.0) -> None:
@@ -189,7 +204,17 @@ class Monster(GameAgent):
                        float(params.get('chaseTime', 0) or 0))
 
     def _on_alert_radius(self, _name: str, params: Params) -> None:
-        """``AlertEnemiesWithinRadius`` - only those close enough hear it."""
+        """``AlertEnemiesWithinRadius`` - only those close enough hear it.
+
+        ``withinRadius`` is an **edge latch**, and the edge is the little
+        girl's whole mechanic.  Carrying her applies a proximity radius to you
+        (``ApplyProximityRadiusToPlayer:value=40``, ps1_18), which means every
+        step asks the enemies who is near; the frame an enemy first comes
+        inside it she screams and gives you away, and she does not scream
+        again until one has left and come back.  0x10001e254 is the test that
+        makes it once rather than every step, 0x10001e2b8 sets the latch
+        whichever way that went.
+        """
         try:
             radius = float(params.get('radius', 0))
         except (TypeError, ValueError):
@@ -197,9 +222,37 @@ class Monster(GameAgent):
         dx = self.player_position[0] - self.position[0]
         dy = self.player_position[1] - self.position[1]
         inside = math.sqrt(dx * dx + dy * dy) < radius
+        was_inside = self.within_radius
+        # An enemy outside the radius clears the latch and does nothing else
+        # (0x10001e248) - it is not alerted at all.
         self.within_radius = inside
-        if inside:
-            self.alert(params.get('to', 'player'), self.player_position)
+        if not inside:
+            return
+        if not was_inside:
+            self.play_proximity_scream()
+        self.alert(params.get('to', 'player'), self.player_position)
+
+    def play_proximity_scream(self) -> None:
+        """The girl in your arms, screaming because something is close.
+
+        The name is **hardcoded in the binary** (0x10001e274) rather than in
+        any level's data, which is why it was missing here: nothing in ps1_18
+        mentions ``dilemma_girl_monsterprox``, and the only way to find it is
+        to read ``alertEnemy:``.  Not spatialized (0x10001e290) because she is
+        being carried, not standing somewhere, and not looping (0x10001e2a0).
+
+        It is kept off ``self.sound`` deliberately: that is the enemy's own
+        voice, and swapping it would silence the thing coming for you.
+        """
+        if self.bank is None:
+            return
+        sound = self.bank.sound(GIRL_PROXIMITY_SOUND)
+        if sound is None:
+            return                # not every level's bank carries her
+        self._proximity_sound = sound
+        sound.spatialized = False
+        sound.looping = False
+        sound.play()
 
     # ---------------------------------------------------------- collision
     def collides_with_player(self) -> None:
@@ -300,10 +353,28 @@ class Monster(GameAgent):
                 # setSpeed:0 at 0x10001d4d4 - this is what actually holds a
                 # searching enemy still; nothing clears the orientation vector.
                 self.speed = 0.0
-                if self.should_attack_on_wanted_position and self.attack_sound:
-                    self.play_sound(self.attack_sound, looping=False)
-                elif self.not_there_sound:
-                    self.play_sound(self.not_there_sound, looping=False)
+                if self.should_attack_on_wanted_position:
+                    # 0x10001d518: an enemy with no attackSound borrows its
+                    # chaseSound - and *keeps* it, because setAttackSound:
+                    # writes the borrowed one back.  It plays looping
+                    # (``playSound:``, not the two-argument form) and the
+                    # branch jumps over setDistractedTime: at 0x10001d588:
+                    # something coming to attack you does not give up.
+                    if not self.attack_sound:
+                        self.attack_sound = self.chase_sound
+                    self.play_sound(self.attack_sound)
+                else:
+                    # 0x10001dc20.  **distractedTime is overwritten here**,
+                    # every time, with the length of the grunt that just
+                    # started - which is why the level data's own
+                    # distractedTime (2 in ps1_8, 20 in ps1_23, 90 in ps1_15)
+                    # never decides anything once an enemy has searched once.
+                    # Getting this wrong left the enemy standing silent for
+                    # the rest of that timer: audible grunt, then nothing
+                    # where a hog should be, which is exactly what was
+                    # reported after 1.0.1.
+                    self.distracted_time = self.play_sound(
+                        self.not_there_sound, looping=False)
             self.has_wanted_position = False         # 0x10001dc38
             self.chasing_time += dt
             self.distracted_timer += dt
