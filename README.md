@@ -22,10 +22,18 @@ build, there is nothing else to find.
 
 That is the whole Mac story and the whole Windows story.  Each platform gets
 its own game object: `Play Papa Sangre.exe` on Windows, `Play Papa Sangre.app`
-on the Mac, both `--onefile` PyInstaller builds that carry their own OpenAL
-Soft (``vendor/openal/soft_oal.dll`` vs ``vendor/openal-mac/libopenal.dylib``),
+on the Mac. Both carry their own OpenAL Soft
+(``vendor/openal/soft_oal.dll`` vs ``vendor/openal-mac/libopenal.dylib``),
 the recovered `.mhr` HRTF, and - Windows only - the NVDA controller client.
 Speech on the Mac is VoiceOver, part of the operating system.
+
+How a bundle is frozen matters for how fast the game appears: a one-file
+PyInstaller build unpacks its whole payload to a temp dir on every launch,
+which costs the game tens of seconds of startup.  The Windows game is one-file
+(its cost is tolerable there); the Mac game is a one-dir app instead, whose
+files are read in place and whose bundle doubles as the double-clickable
+`.app` — it is on screen in about a second and a half.  The diagnostic tools
+are one-file builds on both platforms.
 
 The HRTF is not committed in its built form: `build/` is generated.  The
 committed `tools/embedded_hrtf.dat` is the original IRCAM 1050 set, and

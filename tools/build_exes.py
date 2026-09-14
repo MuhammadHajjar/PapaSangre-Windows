@@ -344,9 +344,18 @@ def build(key: str) -> str:
     # diagnostic tools keep their console, which is the whole point of them.
     windowed = exe_name == GAME_NAME
     console_flag = '--windowed' if windowed else '--console'
+    # The one-file bootloader unpacks its payload to a temp dir on every
+    # launch, and the game's payload is ~100 MB across six hundred small audio
+    # files: that cost seconds on Windows and tens of seconds on the Mac.  The
+    # game is therefore a one-dir app on the Mac (files read in place, the
+    # bundle stays double-clickable) and stays one-file on Windows, where the
+    # old behaviour is proven and the cost is tolerable.  The diagnostics stay
+    # one-file everywhere: they are small, and their single-file shape is what
+    # makes them drop-in tools.
+    mode = '--onedir' if (host.MAC and windowed) else '--onefile'
     cmd = [
         sys.executable, '-m', 'PyInstaller',
-        '--noconfirm', '--clean', '--onefile', console_flag,
+        '--noconfirm', '--clean', mode, console_flag,
         '--name', exe_name,
         '--distpath', RUN,
         '--workpath', WORK,
