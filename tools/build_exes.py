@@ -1,9 +1,24 @@
-"""Build the standalone Windows executables.
+"""Build the standalone, self-contained applications.
 
 Everything the project hands over should be double-clickable — no terminal, no
 Python, no paths to type.  This freezes each app in ``apps/`` into a single
-self-contained ``.exe`` in ``Run/``, carrying its own OpenAL Soft, the recovered
-HRTF, the NVDA controller client and whatever game audio it needs.
+self-contained bundle in ``Run/``, carrying its own OpenAL Soft, the recovered
+HRTF and whatever game audio it needs, and it does so **for the platform it
+runs on**:
+
+=================  ==========================================  =================
+Windows            ``Play Papa Sangre.exe`` — a one-file       ``soft_oal.dll``
+                   PyInstaller build, exactly as it has        ``NVDA client``
+                   always been.                                ``.mhr``
+Mac                ``Play Papa Sangre.app`` — a one-file       ``libopenal.dylib``
+                   PyInstaller ``--windowed`` bundle: the      ``.mhr`` only —
+                   whole game in one bundle, no runtime,       speech is VoiceOver,
+                   no installs, launched like any other        part of macOS.
+                   Mac app.
+=================  ==========================================  =================
+
+The diagnostic tools stay console programs on both platforms — on the Mac a
+plain executable beside the bundles — because their output *is* the point.
 
 Run:  python tools/build_exes.py            (all apps)
       python tools/build_exes.py listen     (one app, by key)
@@ -18,23 +33,97 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from papasangre.util import host                            # noqa: E402
+
 APPS = os.path.join(ROOT, 'apps')
 RUN = os.path.join(ROOT, 'Run')
 WORK = os.path.join(ROOT, 'build', 'pyinstaller')
 BUNDLE = os.path.join(ROOT, 'reference', 'Payload', 'Papa Sangre.app')
-HRTF = os.path.join(ROOT, 'build', 'hrtf', 'papa_ircam_1050.mhr')
-OPENAL = os.path.join(ROOT, 'vendor', 'openal', 'soft_oal.dll')
+HRTF_DIR = os.path.join(ROOT, 'build', 'hrtf')
+HRTF = os.path.join(HRTF_DIR, 'papa_ircam_1050.mhr')
+
+#: PyInstaller's src;dest separator: ';' on Windows, ':' everywhere else.
+SEP = ';' if host.WINDOWS else ':'
+
+#: The game, as the player receives it on each platform.
+GAME_NAME = 'Play Papa Sangre'
+
+
+def openal_library() -> str:
+    """The OpenAL Soft library for this platform, from vendor/."""
+    if host.MAC:
+        p = os.path.join(ROOT, 'vendor', 'openal-mac', 'libopenal.dylib')
+    else:
+        p = os.path.join(ROOT, 'vendor', 'openal', 'soft_oal.dll')
+    if not os.path.exists(p):
+        raise SystemExit(
+            f'missing OpenAL Soft: {p}\n'
+            f'Mac: build it with tools/build_openal_mac.sh and place the '
+            'result at vendor/openal-mac/libopenal.dylib.\n'
+            f'Windows: it ships as vendor/openal/soft_oal.dll, see README.md.')
+    return p
+
+
+OPENAL = openal_library()
 NVDA_DIR = os.path.join(ROOT, 'vendor', 'nvda')
 
-SEP = ';'          # PyInstaller's src;dest separator on Windows
+
+def makemhr_binary() -> str | None:
+    """The platform's makemhr: ``makemhr.exe`` on Windows, the Mac build there."""
+    if host.MAC:
+        p = os.path.join(ROOT, 'vendor', 'makemhr-mac', 'makemhr')
+    else:
+        p = os.path.join(ROOT, 'vendor', 'makemhr', 'makemhr.exe')
+    return p if os.path.exists(p) else None
+
+
+def prepare_hrtf() -> str:
+    """Make sure the built HRTF exists, building it if it does not.
+
+    ``papa_ircam_1050.mhr`` lives in ``build/`` and is therefore not committed:
+    it is produced from the committed ``tools/embedded_hrtf.dat`` (the original
+    IRCAM 1050 set) by ``tools/extract_hrtf.py`` followed by OpenAL Soft's
+    ``makemhr``.  On a machine that has ever built before the file is already
+    there and this is a no-op; on a fresh clone it is recreated end to end.
+    """
+    if os.path.exists(HRTF):
+        return HRTF
+    os.makedirs(HRTF_DIR, exist_ok=True)
+    print('    building HRTF (first build on this machine)...')
+    seed = os.path.join(ROOT, 'tools', 'embedded_hrtf.dat')
+    if not os.path.exists(seed):
+        raise SystemExit(
+            f'missing the HRTF source data: {seed}\n'
+            'the recovered IRCAM 1050 table should be committed beside '
+            'tools/extract_hrtf.py')
+    subprocess.run([sys.executable,
+                    os.path.join(ROOT, 'tools', 'extract_hrtf.py')],
+                   cwd=ROOT, check=True)
+    makemhr = makemhr_binary()
+    if not makemhr:
+        raise SystemExit(
+            f'missing makemhr: {makemhr_binary() or "?"}\n'
+            f'Windows: it ships in the openal-soft binary zip, see README.md.\n'
+            f'Mac: build it with tools/build_openal_mac.sh, or copy the '
+            'arm64 makemhr into vendor/makemhr-mac/')
+    subprocess.run([makemhr,
+                    '-i', os.path.join(HRTF_DIR, 'papa_ircam_1050.def'),
+                    '-o', HRTF],
+                   cwd=HRTF_DIR, check=True)
+    if not os.path.exists(HRTF):
+        raise SystemExit(f'makemhr did not produce {HRTF}')
+    print(f'    {HRTF}')
+    return HRTF
 
 
 def staged_entries(staging: str) -> list[tuple[str, str]]:
     """Turn a staging directory into a handful of ``--add-data`` entries.
 
-    One entry per file blows past Windows' command-line length limit once a
-    build carries the whole audio tree, so whole directories are passed instead
-    and PyInstaller copies their contents.
+    One entry per file blows past the command-line length limit once a build
+    carries the whole audio tree, so whole directories are passed instead and
+    PyInstaller copies their contents.
     """
     data: list[tuple[str, str]] = []
     for name in sorted(os.listdir(staging)):
@@ -45,13 +134,13 @@ def staged_entries(staging: str) -> list[tuple[str, str]]:
 
 
 def game_audio(*rel: str) -> tuple[str, str]:
-    """(source, dest-inside-exe) for one file from the original bundle."""
+    """(source, dest-inside-bundle) for one file from the original bundle."""
     src = os.path.join(BUNDLE, *rel)
     dest = 'gamedata/' + '/'.join(rel[:-1])
     return src, dest
 
 
-#: key -> (script, exe name, extra data files as (src, dest) pairs)
+#: key -> (script, app name, extra data files as (src, dest) pairs)
 TARGETS: dict[str, tuple[str, str, list[tuple[str, str]]]] = {
     'listen': (
         'listen_spatial.py',
@@ -76,7 +165,7 @@ TARGETS: dict[str, tuple[str, str, list[tuple[str, str]]]] = {
     ),
     'play': (
         'play.py',
-        'Play Papa Sangre',
+        GAME_NAME,
         [],          # filled in by prepare_level_data() with every level
     ),
 }
@@ -167,7 +256,8 @@ def prepare_content_data() -> list[tuple[str, str]]:
     contents, so a pre-computed name index is bundled instead of 96 MB of audio.
     """
     sys.path.insert(0, ROOT)
-    from papasangre.assets.audit import write_audio_index      # noqa: PLC0415
+    from papasangre.assets.audit import (known_messages,        # noqa: PLC0415
+                                         write_audio_index)
 
     staging = os.path.join(ROOT, 'build', 'contentdata')
     if os.path.isdir(staging):
@@ -180,11 +270,42 @@ def prepare_content_data() -> list[tuple[str, str]]:
                     os.path.join(staging, 'meta'))
     for name in ('objectsList.plist', 'messagesList.plist'):
         shutil.copy2(os.path.join(BUNDLE, name), staging)
-    shutil.copy2(os.path.join(ROOT, 'tools', 'ps_strings.txt'), staging)
+    # The engine message vocabulary.  tools/ps_strings.txt is the canonical
+    # extraction of the original binary's string table, but the binary is not
+    # committed, so on a fresh clone the vocabulary is assembled from the
+    # committed sources instead (see papasangre.assets.audit.known_messages).
+    vocab = ' '.join(sorted(known_messages()))
+    with open(os.path.join(staging, 'ps_strings.txt'), 'w',
+              encoding='utf-8') as fh:
+        fh.write(vocab + '\n')
     n = write_audio_index(BUNDLE, os.path.join(staging, 'audio_index.json'))
     print(f'    staged reference data ({n} audio names indexed)')
 
     return staged_entries(staging)
+
+
+def _finalize_mac_app(bundle: str) -> None:
+    """Make a PyInstaller .app behave like a proper double-clickable bundle.
+
+    PyInstaller's windowed Mac build lays the bundle out correctly but leaves
+    the inner executable without the executable bit, and a bundle whose binary
+    is not named like its CFBundleExecutable will not open from Finder.  A
+    bare-named launcher beside the real binary keeps
+    ``open "Run/Play Papa Sangre.app" --args ps1_15`` working from the command
+    line too.
+    """
+    macos = os.path.join(bundle, 'Contents', 'MacOS')
+    if not os.path.isdir(macos):
+        raise SystemExit(f'not a .app bundle: {bundle}')
+    exe = os.path.join(macos, GAME_NAME)
+    if os.path.exists(exe):
+        mode = os.stat(exe).st_mode
+        os.chmod(exe, mode | 0o111)
+    # PkgInfo is what Finder reads first; PyInstaller does not always write it.
+    pkg = os.path.join(bundle, 'Contents', 'PkgInfo')
+    if not os.path.exists(pkg):
+        with open(pkg, 'w', encoding='ascii') as fh:
+            fh.write('APPL????')
 
 
 def build(key: str) -> str:
@@ -198,17 +319,19 @@ def build(key: str) -> str:
     script_path = os.path.join(APPS, script)
     if not os.path.exists(script_path):
         raise SystemExit(f'missing app script: {script_path}')
-    if not os.path.exists(HRTF):
-        raise SystemExit(f'missing HRTF: {HRTF}\n'
-                         f'run tools/extract_hrtf.py, then makemhr')
-    if not os.path.exists(OPENAL):
-        raise SystemExit(f'missing OpenAL Soft: {OPENAL}')
+    hrtf = prepare_hrtf()
 
-    data: list[tuple[str, str]] = [(HRTF, 'hrtf')]
-    for name in ('nvdaControllerClient64.dll', 'nvdaControllerClient32.dll'):
-        p = os.path.join(NVDA_DIR, name)
-        if os.path.exists(p):
-            data.append((p, 'nvda'))
+    data: list[tuple[str, str]] = [(hrtf, 'hrtf')]
+    # Speech travels with the Windows build: the NVDA controller client is a
+    # DLL that must sit beside the game.  On the Mac speech is VoiceOver, part
+    # of the operating system, so there is nothing to carry — the pyobjc
+    # bridge is inside the frozen Python itself.
+    if host.WINDOWS:
+        for name in ('nvdaControllerClient64.dll',
+                     'nvdaControllerClient32.dll'):
+            p = os.path.join(NVDA_DIR, name)
+            if os.path.exists(p):
+                data.append((p, 'nvda'))
     for src, dest in extra:
         if not os.path.exists(src):
             raise SystemExit(f'missing bundled audio: {src}')
@@ -216,9 +339,11 @@ def build(key: str) -> str:
 
     # The game is built windowed: a console flashing up beside it is not part
     # of a released game, and its output is a convenience anyway - everything
-    # that matters is spoken.  The diagnostic tools keep their console, which
-    # is the whole point of them.
-    console_flag = '--console' if exe_name != 'Play Papa Sangre' else '--windowed'
+    # that matters is spoken.  On the Mac --windowed is also what makes
+    # PyInstaller produce a .app bundle rather than a bare executable.  The
+    # diagnostic tools keep their console, which is the whole point of them.
+    windowed = exe_name == GAME_NAME
+    console_flag = '--windowed' if windowed else '--console'
     cmd = [
         sys.executable, '-m', 'PyInstaller',
         '--noconfirm', '--clean', '--onefile', console_flag,
@@ -232,18 +357,33 @@ def build(key: str) -> str:
     ]
     for src, dest in data:
         cmd += ['--add-data', f'{src}{SEP}{dest}']
+    if host.MAC:
+        # pyobjc resolves its frameworks lazily enough that the analyser
+        # cannot always see them; the VoiceOver bridge needs both of these
+        # inside the frozen build.
+        cmd += ['--hidden-import', 'Foundation', '--hidden-import', 'AppKit']
     cmd.append(script_path)
 
-    print(f'\n=== building {exe_name}.exe ===', flush=True)
+    kind = '.app' if (host.MAC and windowed) else '.exe' if host.WINDOWS else ''
+    print(f'\n=== building {exe_name}{kind} ===', flush=True)
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if proc.returncode != 0:
         sys.stdout.write(proc.stdout[-4000:])
         sys.stderr.write(proc.stderr[-4000:])
         raise SystemExit(f'PyInstaller failed for {exe_name}')
-    out = os.path.join(RUN, exe_name + '.exe')
-    size = os.path.getsize(out) / 1e6
-    print(f'    {out}  ({size:.0f} MB, {time.perf_counter() - t0:.0f}s)')
+
+    if host.MAC and windowed:
+        out = os.path.join(RUN, exe_name + '.app')
+        _finalize_mac_app(out)
+    elif host.WINDOWS:
+        out = os.path.join(RUN, exe_name + '.exe')
+    else:
+        out = os.path.join(RUN, exe_name)
+    size = sum(os.path.getsize(os.path.join(dp, f))
+               for dp, _d, fs in os.walk(out) for f in fs) \
+        if os.path.isdir(out) else os.path.getsize(out)
+    print(f'    {out}  ({size / 1e6:.0f} MB, {time.perf_counter() - t0:.0f}s)')
     return out
 
 

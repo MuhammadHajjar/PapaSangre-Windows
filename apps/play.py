@@ -1,8 +1,10 @@
-"""Papa Sangre - the Windows port, playing from level 1 onward.
+"""Papa Sangre - the port, playing from level 1 onward.
 
 Runs the recovered engine on the original's own maps, sounds and scripts, and
 chains from one level to the next the way the game does: the exit's win
-narration ends, which fires ``LoadLevelWithName``.
+narration ends, which fires ``LoadLevelWithName``.  Built for Windows and
+macOS: ``Play Papa Sangre.exe`` on one, ``Play Papa Sangre.app`` on the other,
+same game, same keys, screen reader chosen by the platform.
 
 Opens on a spoken menu: Continue, Choose level, Options, Credits, Quit.  Up
 and down move, Enter chooses, Escape goes back, and on an options row the
@@ -48,7 +50,7 @@ from papasangre.shell import (CREDITS, keys_menu,                 # noqa: E402
                               level_menu, main_menu, options_menu,
                               pad_menu, pause_menu)
 from papasangre.shell.menu import PAD_REBINDABLE, REBINDABLE      # noqa: E402
-from papasangre.util import console, paths, sysaudio             # noqa: E402
+from papasangre.util import console, host, paths, sysaudio       # noqa: E402
 from papasangre.util.settings import Settings                     # noqa: E402
 
 #: Turning rates live in ``papasangre.util.settings`` now, because the options
@@ -394,7 +396,7 @@ def main(rep) -> int:
     start = sys.argv[1] if len(sys.argv) > 1 else None
     base = bundle_dir()
 
-    rep.show('Papa Sangre - Windows port')
+    rep.show('Papa Sangre - ' + host.PORT_NAME + ' port')
     rep.show('=' * 46)
     engine = AudioEngine()
     engine.open()
@@ -427,7 +429,8 @@ def main(rep) -> int:
 
     src = PygameInput(keymap, title='Papa Sangre', padmap=padmap)
     rep.show()
-    rep.show('Controls  (edit config\\keys.json to change any of them):')
+    rep.show('Controls  (edit ' + os.path.join('config', 'keys.json')
+             + ' to change any of them):')
     for action, label in ((Action.FOOT_LEFT, 'left foot   (left hand)'),
                           (Action.FOOT_RIGHT, 'right foot  (left hand)'),
                           (Action.TURN_LEFT, 'turn left   (right hand)'),
@@ -529,7 +532,8 @@ def main(rep) -> int:
                     else:
                         running = False
                 # CANCEL is deliberately *not* a quit.  Escape pauses, and
-                # the only ways out are Quit in the menu or alt+F4.
+                # the only ways out are Quit in the menu or the platform's
+                # window close (Alt+F4 on Windows, Cmd+Q on the Mac).
         if src.quit_requested:
             running = False
 
