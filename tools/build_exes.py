@@ -27,6 +27,7 @@ Run:  python tools/build_exes.py            (all apps)
 from __future__ import annotations
 
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -49,6 +50,20 @@ SEP = ';' if host.WINDOWS else ':'
 
 #: The game, as the player receives it on each platform.
 GAME_NAME = 'Play Papa Sangre'
+
+#: The Mac bundle's reverse-DNS identity.  PyInstaller's default is just the
+#: app name, which is not a sane identifier (and a space, at that): this is
+#: what LaunchServices, Spotlight and \"uninstall\" tooling key on.
+BUNDLE_ID = 'com.papasangre.port'
+
+
+def version() -> str:
+    """The port's version, from ``VERSION`` at the repository root."""
+    try:
+        with open(os.path.join(ROOT, 'VERSION'), encoding='utf-8') as fh:
+            return fh.read().strip() or '0.0.0'
+    except OSError:
+        return '0.0.0'
 
 
 def openal_library() -> str:
@@ -293,6 +308,12 @@ def _finalize_mac_app(bundle: str) -> None:
     bare-named launcher beside the real binary keeps
     ``open "Run/Play Papa Sangre.app" --args ps1_15`` working from the command
     line too.
+
+    Also stamps the identity a real bundle should carry: a reverse-DNS
+    ``CFBundleIdentifier`` (PyInstaller's default is the bare app name) and a
+    ``CFBundleShortVersionString``/``CFBundleVersion`` taken from ``VERSION``.
+    PyInstaller writes ``0.0.0`` for both, which would otherwise ship even
+    though the release zip is named ``1.0.0``.
     """
     macos = os.path.join(bundle, 'Contents', 'MacOS')
     if not os.path.isdir(macos):
@@ -306,6 +327,15 @@ def _finalize_mac_app(bundle: str) -> None:
     if not os.path.exists(pkg):
         with open(pkg, 'w', encoding='ascii') as fh:
             fh.write('APPL????')
+
+    info = os.path.join(bundle, 'Contents', 'Info.plist')
+    with open(info, 'rb') as fh:
+        plist = plistlib.load(fh)
+    plist['CFBundleIdentifier'] = BUNDLE_ID
+    plist['CFBundleShortVersionString'] = version()
+    plist['CFBundleVersion'] = version()
+    with open(info, 'wb') as fh:
+        plistlib.dump(plist, fh, sort_keys=True)
 
 
 def build(key: str) -> str:

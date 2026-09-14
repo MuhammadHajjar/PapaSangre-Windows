@@ -220,6 +220,45 @@ def test_pyobjc_is_a_declared_dependency():
     assert 'pyinstaller' in toml
 
 
+def test_the_mac_bundle_identifier_is_reverse_dns():
+    import tools.build_exes as be
+    bid = be.BUNDLE_ID
+    assert bid.count('.') >= 2            # com.<something>.<leaf>: not 'Play Papa Sangre'
+    assert ' ' not in bid
+    assert all(part.isalnum() for part in bid.split('.')), bid
+
+
+def test_version_helper_reads_the_version_file():
+    import tools.build_exes as be
+    want = open(os.path.join(ROOT, 'VERSION'), encoding='utf-8').read().strip()
+    assert be.version() == (want or '0.0.0')
+
+
+def test_finalize_mac_app_stamps_identity_and_version():
+    """The .app must ship a sane bundle id and the real version, not 0.0.0."""
+    import plistlib
+    import tempfile
+    import tools.build_exes as be
+    if host.WINDOWS:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle = os.path.join(tmp, 'Fake.app')
+        macos = os.path.join(bundle, 'Contents', 'MacOS')
+        os.makedirs(macos)
+        open(os.path.join(macos, be.GAME_NAME), 'w').close()
+        info = os.path.join(bundle, 'Contents', 'Info.plist')
+        with open(info, 'wb') as fh:
+            plistlib.dump({'CFBundleIdentifier': 'Play Papa Sangre',
+                           'CFBundleShortVersionString': '0.0.0',
+                           'CFBundleVersion': '0.0.0'}, fh)
+        be._finalize_mac_app(bundle)
+        with open(info, 'rb') as fh:
+            plist = plistlib.load(fh)
+        assert plist['CFBundleIdentifier'] == be.BUNDLE_ID
+        assert plist['CFBundleShortVersionString'] == be.version()
+        assert plist['CFBundleVersion'] == be.version()
+
+
 if __name__ == '__main__':
     fns = [v for k, v in sorted(globals().items()) if k.startswith('test_')]
     failed = 0
