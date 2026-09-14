@@ -193,9 +193,9 @@ class Gamepad:
         elif event.type == pygame.JOYBUTTONUP:
             self._emit([self.button_name(event)], 'up', now, out)
         elif event.type == pygame.JOYHATMOTION:
-            # A foot is a press and a release, and the release is what the
-            # walking code times, so both edges have to be reported - and
-            # rolling from one direction to another must release the first.
+            # A foot is a press and a release, and both edges have to be
+            # reported (held-state tracking needs the up) - and rolling from
+            # one direction to another must release the first.
             was, now_hat = self._hat, tuple(event.value)
             self._hat = now_hat
             old = FALLBACK_HAT_NAMES.get(was, '')

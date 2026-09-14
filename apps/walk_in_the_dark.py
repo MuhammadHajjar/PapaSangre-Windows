@@ -142,10 +142,10 @@ def main(rep) -> int:
             foot = (LEFT if action == Action.FOOT_LEFT.value else
                     RIGHT if action == Action.FOOT_RIGHT.value else None)
             if foot is not None:
-                # A step fires on release, timestamped when the key came up.
-                if phase == 'down':
-                    interpreter.foot_pressed(foot)
-                else:
+                # [REQUESTED] A step fires on key-*down*, timestamped when the
+                # key went down - the original stepped on release.  Both halves
+                # still run in order, so the alternation gate is untouched.
+                if phase == 'down' and interpreter.foot_pressed(foot):
                     interpreter.foot_released(foot, ts)
             elif phase == 'down':
                 if (action in (Action.TURN_LEFT.value, Action.TURN_RIGHT.value)

@@ -10,6 +10,8 @@ The rules, exactly as the original has them:
 * Nothing happens unless ``player_can_walk``.
 * Nothing happens while the player state is 3 (tripped).
 * A foot must be pressed and then **released** - the step fires on release.
+  (The Windows port calls both on key-down instead, so the foot lands as you
+  press it; nothing in this class changes for that - see DIVERGENCES §4c.)
 * **A foot whose entry in ``feetViewDict`` is "off" is ignored entirely**, on
   both press and release.  This is the alternation rule, and it is the whole
   reason you cannot run by hammering one key: the foot you just used is put
@@ -262,7 +264,7 @@ class MoveInterpretor:
         So the base instant matters.  The original stamps the foot with
         ``[NSDate date]`` and schedules from the same moment, so the callback is
         guaranteed to land at or after 2.0 s of elapsed foot time.  Here the
-        stamp comes from the key-release event while ``bus.now`` is the previous
+        stamp comes from the key event while ``bus.now`` is the previous
         frame, and scheduling off ``bus.now`` made the callback arrive a few
         milliseconds *early* - ``gap`` came out at 1.995 rather than 2.0, the
         foot stayed "off", and the shuffle silently never played.  That is why

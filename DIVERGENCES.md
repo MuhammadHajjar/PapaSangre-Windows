@@ -178,7 +178,27 @@ gets about two frames before the roar takes over.
 
 ## 4c. REQUESTED — asked for, knowing it is a change
 
-The one place the port deliberately does not sound like Papa Sangre.
+### Feet step on key-down, not key-up
+
+**The original steps on release.** `-[PGEMoveInterpretor footButtonPressed:]`
+only marks the foot `"pressed"`; the step — the `PGE_ACTION_OneStep` post, the
+timestamp, `lastFootButtonPressed` — is all in `footButtonReleased:`. On a
+touchscreen that is the natural shape: your thumb is already on the foot and
+lifting it is the deliberate act.
+
+Asked for on 2026-09-14: with A and D under your fingers, waiting for the key
+to come back up puts a hold-length delay between the keystroke and the footfall
+you hear.
+
+**What the port does now.** The key-down handler runs `foot_pressed` and, if it
+is allowed, `foot_released` immediately after, with the key-**down** timestamp.
+Key-up no longer does anything. `MoveInterpretor` itself is unchanged — the
+alternation gate (`"off"` for 2 s), the shuffle, the clamp and the dead trip
+branch all still run exactly as recovered — so the only thing that moves is the
+instant the foot lands. You still cannot walk by hammering one key.
+
+Both `apps/play.py` and `apps/walk_in_the_dark.py`; it applies to the
+controller's feet too, since they feed the same action stream.
 
 ### Outdoor levels get their own reverb
 

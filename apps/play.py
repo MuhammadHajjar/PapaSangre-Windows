@@ -509,9 +509,13 @@ def main(rep) -> int:
             foot = (LEFT if action == Action.FOOT_LEFT.value else
                     RIGHT if action == Action.FOOT_RIGHT.value else None)
             if foot is not None:
-                if phase == 'down':
-                    mi.foot_pressed(foot)
-                else:
+                # [REQUESTED] The original steps on *release*; here the step
+                # fires the moment the key goes down, timestamped from the
+                # key-down event.  Press and release are still both run, in
+                # that order, so the alternation gate, the shuffle and the
+                # trip test all behave exactly as recovered - only the instant
+                # the foot lands moves.  Key-up carries no meaning any more.
+                if phase == 'down' and mi.foot_pressed(foot):
                     mi.foot_released(foot, ts)
             elif phase == 'down':
                 if action == Action.SKIP.value:
