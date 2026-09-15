@@ -6,7 +6,7 @@ level link and footstep bank resolves. Anything that does not resolve is either
 a gap in the port or a defect in the original data, and the report says which.
 
 Also writes CONTENT_INVENTORY.md next to the executable: a per-object checklist
-of everything that has to exist in the Windows version.
+of everything that has to exist in the port, on any platform.
 
 Built as ``Check game content.exe``.
 """

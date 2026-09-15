@@ -1,15 +1,10 @@
-"""Zip up a release of the Windows port.
+"""Zip up a release for the platform doing the packing.
 
 Takes ``Run/`` and makes the one archive that gets handed to someone else:
-**the game executable, and nothing else**.
-
-Nothing else means nothing else.  No readme, no config, no recordings, no save
-file - and **none of the diagnostic tools**.  `Listen to spatial audio`,
-`Verify spatial audio`, `Check game content` and `Walk in the dark` are how
-this port was built and checked; they are not part of the game, and a player
-opening the zip should find one thing to double-click.  Same reasoning as the
-``Start at level N.cmd`` launchers, which are also not shipped: the game has
-"Choose level" in its menu.  They all stay in ``Run/`` for testing here.
+**the game, and nothing else** - ``Play Papa Sangre.exe`` on a Windows
+machine, ``Play Papa Sangre.app`` on a Mac.  Diagnostic tools, launchers,
+config, recordings and save files all stay behind, for the same reasons the
+Windows build always refused them.
 
     python tools/pack_release.py
 """
@@ -22,10 +17,14 @@ import sys
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from papasangre.util import host                            # noqa: E402
+
 RUN = os.path.join(ROOT, 'Run')
 DIST = os.path.join(ROOT, 'dist')
 
-GAME = 'Play Papa Sangre.exe'
+GAME = ('Play Papa Sangre.app' if host.MAC else 'Play Papa Sangre.exe')
 
 #: The release, in full.
 ALWAYS = (GAME,)
@@ -33,18 +32,6 @@ ALWAYS = (GAME,)
 #: Never shipped: recordings, generated reports, and anybody's save file.
 NEVER_SUFFIX = ('.wav', '.log')
 NEVER_NAMES = ('progress.json',)
-
-#: **Nothing from config/ is shipped.**  Every file in there is written on
-#: first run - ``keys.json`` by ``KeyMap.load``, ``controller.json`` by
-#: ``PadMap.load``, ``settings.json`` by ``Settings``, ``audio.json`` by
-#: ``configured_outdoor_profile``, and ``alsoft.ini`` by the audio engine on
-#: *every* start.
-#:
-#: Shipping them is not just redundant, it is harmful: ``alsoft.ini`` holds an
-#: absolute ``hrtf-paths`` pointing at the machine that built it, so on anyone
-#: else's computer that path does not exist and the recovered HRTF - the whole
-#: point of this port - silently fails to load.  It also exposes a local path,
-#: and lets HRTF be switched off in a game that is unplayable without it.
 
 
 def wanted() -> list[tuple[str, str]]:
@@ -103,21 +90,35 @@ def main(argv: list[str]) -> int:
         return 1
 
     os.makedirs(DIST, exist_ok=True)
-    out = os.path.join(DIST, f'PapaSangre-Windows-{version()}.zip')
+    plat = 'macOS' if host.MAC else 'Windows' if host.WINDOWS else host.PLATFORM
+    out = os.path.join(DIST, f'PapaSangre-{plat}-{version()}.zip')
+
+    def _tree(root: str):
+        """Every file under root, as (absolute, arcname) pairs."""
+        for dp, _d, fs in os.walk(root):
+            for f in sorted(fs):
+                full = os.path.join(dp, f)
+                yield full, os.path.relpath(full, RUN)
 
     total = 0
+    count = 0
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED,
                          compresslevel=6) as zf:
         for path, name in files:
-            zf.write(path, name)
-            total += os.path.getsize(path)
-            print(f'  + {name}  ({os.path.getsize(path) / 1e6:.1f} MB)'
-                  if os.path.getsize(path) > 1e6 else f'  + {name}')
+            members = _tree(path) if os.path.isdir(path) else [(path, name)]
+            for full, arcname in members:
+                if os.path.splitext(arcname)[1].lower() in NEVER_SUFFIX:
+                    continue
+                if os.path.basename(arcname) in NEVER_NAMES:
+                    continue
+                zf.write(full, arcname)
+                total += os.path.getsize(full)
+                count += 1
 
     packed = os.path.getsize(out)
     digest = hashlib.sha256(open(out, 'rb').read()).hexdigest()
     print(f'\n{out}')
-    print(f'  {len(files)} files, {total / 1e6:.0f} MB in, '
+    print(f'  {count} files, {total / 1e6:.0f} MB in, '
           f'{packed / 1e6:.0f} MB packed')
     print(f'  sha256 {digest}')
     return 0

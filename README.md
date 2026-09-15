@@ -1,8 +1,9 @@
-# Papa Sangre — Windows port
+# Papa Sangre — Windows and macOS port
 
-A faithful port of *Papa Sangre* (Somethin' Else, iOS, 2010) to Windows: the
-audio-only horror game you play entirely by listening. All 25 levels, keyboard
-and controller, screen-reader output, and the original's own HRTF.
+A faithful port of *Papa Sangre* (Somethin' Else, iOS, 2010) to Windows and
+macOS: the audio-only horror game you play entirely by listening. All 25
+levels, keyboard and controller, screen-reader output, and the original's own
+HRTF.
 
 The engine is not a re-imagining. It is the original's logic, recovered from
 the arm64 binary and its data: the same maps, the same playlists, the same
@@ -17,11 +18,30 @@ Everything the game runs on is in here: the audio, the Tiled map exports, the
 S3D playlists, the message and object lists, and the HRTF table. Clone it and
 build, there is nothing else to find.
 
-    python tools/build_exes.py        the .exe files, into Run/
+    python tools/build_exes.py        all apps, for the platform you are on
 
-`build_exes.py` wants `vendor/makemhr/makemhr.exe` (from openal-soft's tools)
-to turn the HRTF table into an `.mhr`; `vendor/openal/soft_oal.dll` is
-committed.
+That is the whole Mac story and the whole Windows story.  Each platform gets
+its own game object: `Play Papa Sangre.exe` on Windows, `Play Papa Sangre.app`
+on the Mac. Both carry their own OpenAL Soft
+(``vendor/openal/soft_oal.dll`` vs ``vendor/openal-mac/libopenal.dylib``),
+the recovered `.mhr` HRTF, and - Windows only - the NVDA controller client.
+Speech on the Mac is VoiceOver, part of the operating system.
+
+How a bundle is frozen matters for how fast the game appears: a one-file
+PyInstaller build unpacks its whole payload to a temp dir on every launch,
+which costs the game tens of seconds of startup.  The Windows game is one-file
+(its cost is tolerable there); the Mac game is a one-dir app instead, whose
+files are read in place and whose bundle doubles as the double-clickable
+`.app` — it is on screen in about a second and a half.  The diagnostic tools
+are one-file builds on both platforms.
+
+The HRTF is not committed in its built form: `build/` is generated.  The
+committed `tools/embedded_hrtf.dat` is the original IRCAM 1050 set, and
+`build_exes.py` rebuilds `build/hrtf/papa_ircam_1050.mhr` from it on a fresh
+clone, needing `vendor/makemhr/makemhr.exe` (Windows, from openal-soft's
+binary zip) or `vendor/makemhr-mac/makemhr` (Mac, built and committed).  The
+Mac OpenAL dylib and makemhr are built once per machine with
+`tools/build_openal_mac.sh` and committed.
 
 The original's arm64 binary is here too, at
 `reference/Payload/Papa Sangre.app/Papa Sangre`. Nothing needs it to build or
@@ -38,8 +58,9 @@ journal and checking it.
 
 ## Running from source
 
-Python 3.12, `pygame-ce`, and OpenAL Soft. Speech goes through the NVDA
-controller client when NVDA is running, SAPI 5 otherwise.
+Python 3.12+, `pygame-ce`, `pyobjc-framework-cocoa` on the Mac, and OpenAL
+Soft. Speech goes through the NVDA controller client when NVDA is running,
+SAPI 5 otherwise; on the Mac it goes through VoiceOver.
 
     python apps/play.py               the game
     python apps/play.py ps1_17        straight into one level
@@ -71,8 +92,8 @@ Controller, rebindable in Options → Controller buttons:
 | Start | pause menu |
 | Shoulders | volume |
 
-Nothing on the keyboard or the pad quits the game: that is alt+F4, or Quit in
-a menu.
+Nothing on the keyboard or the pad quits the game: that is Alt+F4 on Windows,
+Cmd+Q on the Mac, or Quit in a menu.
 
 ## Layout
 
@@ -93,7 +114,8 @@ a menu.
 *Papa Sangre* was created by **Somethin' Else**, published by Playground, with
 the Papa Engine. This port is not affiliated with them.
 
-Windows port by **Muhammad Hajjar**.
+Windows port by **Muhammad Hajjar**; the macOS build of the same port runs the
+same engine, with VoiceOver for speech.
 
 ## Licence
 

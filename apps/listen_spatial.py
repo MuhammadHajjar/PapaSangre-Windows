@@ -18,7 +18,7 @@ if __package__ in (None, ''):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from papasangre.audio.engine import AudioEngine, SoundSpec      # noqa: E402
-from papasangre.util import console, paths, sysaudio            # noqa: E402
+from papasangre.util import console, host, paths, sysaudio      # noqa: E402
 
 RADIUS = 250.0          # Tiled pixels; about two metres at the game's scale
 
@@ -120,7 +120,8 @@ def main(rep) -> int:
     rep.show(f'HRTF in use    : {engine.available_hrtfs}')
     rep.show(f'reverb         : {"on" if engine.reverb_slot else "off"}')
     mono = sysaudio.mono_mix_enabled()
-    rep.show(f'Windows mono   : {"ON - this defeats all spatial audio" if mono else "off"}')
+    rep.show(f'{"System mono" if host.MAC else "Windows mono"}   : '
+             f'{"ON - this defeats all spatial audio" if mono else "off"}')
     rep.show()
 
     for w in sysaudio.warnings_for(engine.device_name):

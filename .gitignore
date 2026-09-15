@@ -1,11 +1,14 @@
 # Generated
 build/
 dist/
+.DS_Store
 Run/*
 !Run/*.cmd
+!Run/*.command
 config/
 __pycache__/
 *.pyc
+.venv/
 
 # The original game.  The data the port runs on is committed - audio, maps,
 # playlists, the message and object lists, and the HRTF table - so a clone
@@ -39,3 +42,4 @@ vendor/makemhr/
 
 # Local test builds of pull requests - never committed
 PR test builds/
+vendor/build-openal/

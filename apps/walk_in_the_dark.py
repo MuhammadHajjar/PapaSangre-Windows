@@ -34,7 +34,7 @@ from papasangre.input.interpreter import (LEFT, RIGHT,           # noqa: E402
                                           MoveInterpretor)
 from papasangre.input.keymap import Action, KeyMap               # noqa: E402
 from papasangre.input.pygame_source import PygameInput           # noqa: E402
-from papasangre.util import console, paths, sysaudio             # noqa: E402
+from papasangre.util import console, host, paths, sysaudio       # noqa: E402
 from papasangre.world.level import Level                         # noqa: E402
 
 #: Degrees per second while a turn key is held.  The original turned by swiping,
@@ -60,7 +60,7 @@ def main(rep) -> int:
     base = bundle_dir()
     exports = os.path.join(base, 'Exports', 'Papa Sangre')
 
-    rep.show('Papa Sangre - Windows port')
+    rep.show('Papa Sangre - ' + host.PORT_NAME + ' port')
     rep.show('=' * 46)
     engine = AudioEngine()
     engine.open()

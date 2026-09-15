@@ -5,11 +5,22 @@ Speech here is for the things the iOS build put on screen or in VoiceOver:
 menus, level names, status, and the settings UI.  In-game it stays quiet unless
 the player asks for it, so the soundscape is never talked over.
 
-Backends, tried in order:
+Backends, tried in order — decided by the platform, never by what happens to
+be importable:
 
-1. ``nvdaControllerClient64.dll`` — direct, no COM, lowest latency.
-2. SAPI 5 through ``win32com``/``comtypes`` — always available on Windows.
-3. A null backend that records what would have been said (for tests).
+* **macOS**
+  1. VoiceOver through pyobjc (``voiceover.py``, a port of the accessibility
+     mod's ``VoiceOverOutput.cs``): ``tell application "VoiceOver" to output
+     "…"`` via ``NSAppleScript``, falling back to an
+     ``NSAccessibilityPostNotificationWithUserInfo`` announcement on the key
+     window.  VoiceOver is part of macOS, so there is nothing to detect
+     beyond it being switched on.
+  2. A null backend that records what would have been said (for tests).
+
+* **Windows**
+  1. ``nvdaControllerClient64.dll`` — direct, no COM, lowest latency.
+  2. SAPI 5 through ``win32com``/``comtypes`` — always available on Windows.
+  3. A null backend that records what would have been said (for tests).
 """
 
 from __future__ import annotations
@@ -18,7 +29,7 @@ import ctypes
 import os
 import sys
 
-from ..util import paths
+from ..util import host, paths
 
 _NVDA_DLL_NAMES = ('nvdaControllerClient64.dll', 'nvdaControllerClient32.dll')
 
@@ -38,7 +49,6 @@ def _nvda_search_dirs() -> list[str]:
         r'C:\Program Files\twblue\lib\accessible_output2\lib',
         r'C:\Program Files (x86)\TeamTalk5',
     ]
-
 
 class SpeechBackend:
     name = 'null'
@@ -116,6 +126,34 @@ class SapiSpeech(SpeechBackend):
         return True
 
 
+class VoiceOverSpeech(SpeechBackend):
+    """VoiceOver through pyobjc — the Mac's counterpart to NvdaSpeech.
+
+    The real work is in :mod:`.voiceover`, a port of the accessibility mod's
+    ``VoiceOverOutput.cs``; this wrapper exists so the rest of the game sees
+    the same three-method backend NVDA and SAPI present.  ``braille`` routes
+    through the same ``output`` command because VoiceOver renders what it
+    speaks onto a connected braille display itself.
+    """
+
+    name = 'voiceover'
+
+    def __init__(self) -> None:
+        from . import voiceover                              # noqa: PLC0415
+        if not voiceover.is_supported():
+            raise OSError('VoiceOver output is unavailable')
+        self._vo = voiceover
+
+    def speak(self, text: str, interrupt: bool = False) -> bool:
+        return self._vo.speak(text, interrupt=interrupt)
+
+    def braille(self, text: str) -> bool:
+        return self._vo.speak(text)
+
+    def cancel(self) -> bool:
+        return self._vo.cancel()
+
+
 def _find_nvda_dll() -> str | None:
     want = _NVDA_DLL_NAMES[0] if sys.maxsize > 2 ** 32 else _NVDA_DLL_NAMES[1]
     for d in _nvda_search_dirs():
@@ -126,14 +164,18 @@ def _find_nvda_dll() -> str | None:
 
 
 def create(prefer: str | None = None) -> SpeechBackend:
-    """Pick the best available backend.
+    """Pick the best available backend for this platform.
 
-    ``prefer`` may be 'nvda', 'sapi' or 'null' to force one.
+    ``prefer`` forces one: 'voiceover', 'nvda', 'sapi' or 'null'.  The default
+    order is the platform's (``host.speech_backend_order()``): VoiceOver on
+    the Mac, NVDA then SAPI on Windows.
     """
-    order = [prefer] if prefer else ['nvda', 'sapi', 'null']
+    order = [prefer] if prefer else host.speech_backend_order()
     for kind in order:
         try:
-            if kind == 'nvda':
+            if kind == 'voiceover':
+                return VoiceOverSpeech()
+            elif kind == 'nvda':
                 dll = _find_nvda_dll()
                 if dll:
                     return NvdaSpeech(dll)

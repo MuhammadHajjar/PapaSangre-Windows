@@ -26,9 +26,19 @@ def writable_root() -> str:
     """Directory we may write to (config, saves, logs).
 
     A one-file build's resource root is a temporary directory that disappears on
-    exit, so anything that must persist goes next to the executable instead.
+    exit, so anything that must persist goes beside the executable.  On the
+    Mac, though, a quarantined .app can be run from a *translocated* read-only
+    mount (Gatekeeper's App Translocation), where nothing inside the bundle is
+    writable — so there the equivalent of "next to the executable" is the
+    application-support directory, which is where Mac apps keep per-user
+    state.  Windows keeps the exact behaviour it has always had.
     """
     if FROZEN:
+        from . import host                                   # noqa: PLC0415
+        if host.MAC:
+            base = (os.environ.get('HOME') or os.path.expanduser('~'))
+            return os.path.join(base, 'Library', 'Application Support',
+                                'Papa Sangre')
         return os.path.dirname(sys.executable)
     return resource_root()
 
@@ -38,6 +48,22 @@ def resource(*parts: str) -> str:
 
 
 def openal_dll() -> str:
+    """The OpenAL Soft library to load, platform for platform.
+
+    Windows keeps the exact names it has always had - ``soft_oal.dll``, at the
+    frozen root first (PyInstaller's ``--add-binary`` puts it there), then the
+    source-tree vendor directory.  The Mac carries the same OpenAL Soft built
+    as ``libopenal.dylib`` in ``vendor/openal-mac``, with the same order of
+    preference.
+    """
+    from . import host                                       # noqa: PLC0415
+    if host.MAC:
+        for candidate in (resource('libopenal.dylib'),
+                          resource('vendor', 'openal-mac',
+                                   'libopenal.dylib')):
+            if os.path.exists(candidate):
+                return candidate
+        return resource('vendor', 'openal-mac', 'libopenal.dylib')
     for candidate in (resource('soft_oal.dll'),
                       resource('vendor', 'openal', 'soft_oal.dll')):
         if os.path.exists(candidate):
