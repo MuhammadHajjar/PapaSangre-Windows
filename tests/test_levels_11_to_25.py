@@ -556,3 +556,46 @@ def test_the_third_note_of_papa_sangre_says_can_be_heard():
     for stem in ('ps1_13', 'ps1_16', 'ps1_18'):
         _b, _m, _bk, other = build(stem)
         assert other.agent('note3').loop_sound == 'note_brass_01_dry_d_living_+5'
+
+
+def test_the_siren_does_not_fall_silent_after_you_walk_away():
+    """ps1_23 is the one level where this could go wrong.
+
+    Every other lost soul has three different files; the siren's
+    ``abandonSound`` **is** her ``restSound`` - `dilemma_siren_living` both
+    times.  So walking away plays that file once, and settling back to resting
+    asks ``play_sound`` for the name it already has.  Guarded on the name
+    alone, it would return without restoring the loop, and she would go quiet
+    for the rest of the level the moment the one-shot ended.
+    """
+    from papasangre.entities.dilemma import ALERT, ABANDONED, REST  # noqa: PLC0415
+    bus, _mi, bank, lv = build('ps1_23')
+    lv.start(0.0)
+    t = 0.5
+    bus.now = t
+    lv.update(t)
+    bus.post('PGE_MESSAGE_ActivateAgentWithName', {'name': 'siren'})
+    t += 0.1
+    bus.now = t
+    lv.update(t)
+    siren = lv.agent('siren')
+    assert siren.abandon_sound == siren.rest_sound, 'the whole point of this test'
+
+    def stand(dx, when):
+        lv.player.position = (siren.position[0] + dx, siren.position[1])
+        bus.post('PGE_MESSAGE_PlayerMovedToPosition',
+                 {'position': lv.player.position})
+        bus.now = when
+        lv.update(when)
+
+    stand(30.0, t + 0.1)
+    assert siren.state == ALERT
+    stand(600.0, t + 0.2)
+    assert siren.state == ABANDONED
+    assert not siren.sound.looping, 'the line gets one play'
+
+    line = bank.sounds[siren.abandon_sound].duration
+    stand(600.0, t + 0.2 + line + 0.1)
+    assert siren.state == REST
+    assert siren.sound.looping, 'she has to be back on a loop, not silent'
+    assert siren.sound.playing

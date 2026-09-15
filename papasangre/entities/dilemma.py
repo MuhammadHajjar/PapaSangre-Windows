@@ -89,6 +89,17 @@ class Dilemma(GameAgent):
         if self.bank is None or not name:
             return 0.0
         if name == self._current_sound_name:
+            # The guard is on the name alone, like the enemy's.  One case the
+            # original could never reach: ps1_23's siren uses the *same file*
+            # for her abandoned line and her resting loop, so leaving her
+            # plays it once and coming back to rest asks for the name already
+            # loaded.  Without this she would keep the one-shot's looping=False
+            # and fall silent for good once it ended.
+            if self.sound is not None:
+                if bool(self.sound.looping) != bool(looping):
+                    self.sound.looping = looping
+                if looping and not self.sound.playing:
+                    self.sound.play()
             return float(getattr(self.sound, 'duration', 0.0) or 0.0)
         if self.sound is not None:
             self.sound.stop()
