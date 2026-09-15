@@ -36,3 +36,6 @@ tools/classdump.txt
 vendor/openal-soft-*-bin/
 vendor/openal-soft-bin.zip
 vendor/makemhr/
+
+# Local test builds of pull requests - never committed
+PR test builds/
