@@ -57,6 +57,9 @@ class Dilemma(GameAgent):
         self.alert_distance = DEFAULT_ALERT_DISTANCE
         self.state_at_previous_frame = 0
         self._current_sound_name = ''
+        #: [REQUESTED] when the abandoned line has had its say and they go
+        #: back to resting.  -1 means not waiting on one.
+        self._rest_at = -1.0
 
     # ------------------------------------------------------------ activity
     def activate(self) -> None:
@@ -65,7 +68,7 @@ class Dilemma(GameAgent):
         super().activate()
 
     # --------------------------------------------------------------- sound
-    def play_sound(self, name: str) -> None:
+    def play_sound(self, name: str, looping: bool = True) -> float:
         """``-[PGEDilemma playSound:]``
 
         Guarded on the name alone, like the enemy's, and it leaves
@@ -74,25 +77,31 @@ class Dilemma(GameAgent):
         is spoken in your head rather than from the floor.
 
         The call is ``[[self sound] play:YES]`` (``mov w2, #1`` at 0x1000457c8),
-        so **every** dilemma sound loops - the baby goes on crying until its
-        state changes.  ``PGECollectible startLoop`` passes the same flag; the
-        one-shot ``hitwall`` passes ``play:NO``.
+        so in the original **every** dilemma sound loops - the baby goes on
+        crying until its state changes.  ``PGECollectible startLoop`` passes
+        the same flag; the one-shot ``hitwall`` passes ``play:NO``.
+
+        [REQUESTED] The abandoned line is the one exception here: it is played
+        once rather than looped, so walking away leaves them resting again
+        instead of calling after you forever.  Returns how long it runs, which
+        is what times that.
         """
         if self.bank is None or not name:
-            return
+            return 0.0
         if name == self._current_sound_name:
-            return
+            return float(getattr(self.sound, 'duration', 0.0) or 0.0)
         if self.sound is not None:
             self.sound.stop()
         sound = self.bank.sound(name)
         if sound is None:
-            return
+            return 0.0
         self.sound = sound
         self._current_sound_name = name
         if sound.spatialized:
             self.update_spatialized_sound()
-        sound.looping = True
+        sound.looping = looping
         sound.play()
+        return float(getattr(sound, 'duration', 0.0) or 0.0)
 
     # ---------------------------------------------------------- collisions
     def check_collisions_with_player(self) -> bool:
@@ -127,12 +136,29 @@ class Dilemma(GameAgent):
         if not self.active:
             return
         self.check_collisions_with_player()
+
+        # [REQUESTED] Walking away puts them back on their resting loop.  The
+        # original has no path out of 8: ``checkCollisionsWithPlayer`` only
+        # ever moves 9 -> 8, and ``playSound:`` loops everything, so once you
+        # had been near someone they called after you for the rest of the
+        # level.  Here the abandoned line gets one play and then they settle,
+        # which also means the aware loop is only ever heard inside
+        # ``alertDistance``.  Re-entering the radius interrupts it the
+        # ordinary way, because state 9 is set before this runs.
+        if (self.state == ABANDONED and self._rest_at >= 0.0
+                and now >= self._rest_at):
+            self._rest_at = -1.0
+            self.state = REST
+
         state = self.state
         if state != self.state_at_previous_frame:
-            self.play_sound({ABANDONED: self.abandon_sound,
-                             ALERT: self.alert_sound,
-                             REST: self.rest_sound,
-                             THANKED: self.thanks_sound}.get(state, ''))
+            looping = state != ABANDONED
+            said = self.play_sound({ABANDONED: self.abandon_sound,
+                                    ALERT: self.alert_sound,
+                                    REST: self.rest_sound,
+                                    THANKED: self.thanks_sound}.get(state, ''),
+                                   looping=looping)
+            self._rest_at = (now + said) if state == ABANDONED else -1.0
         self.state_at_previous_frame = state
         super().update(now, dt)
 

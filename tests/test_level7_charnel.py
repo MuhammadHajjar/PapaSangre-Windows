@@ -270,10 +270,12 @@ def test_the_door_plays_the_ending_and_leads_to_level_8():
 
 
 # ------------------------------------------------------- reported bugs
-def test_every_dilemma_sound_loops():
+def test_every_dilemma_sound_loops_except_the_abandoned_line():
     """-[PGEDilemma playSound:] ends in ``play:`` with ``mov w2, #1``.
 
     The baby calls until its state changes; it does not call once and go quiet.
+    **The abandoned line is a REQUESTED exception** - it plays once and they
+    settle back to resting, so the crying does not follow you round the level.
     """
     bus, mi, bank, lv = build()
     t = start(bus, lv)
@@ -290,7 +292,54 @@ def test_every_dilemma_sound_loops():
     bus.post('PGE_MESSAGE_PlayerMovedToPosition', {'position': lv.player.position})
     lv.update(t + 0.2)
     assert baby.state == ABANDONED
-    assert baby.sound.looping, 'and the crying after you'
+    assert not baby.sound.looping, 'the crying after you gets one play'
+
+
+def test_walking_away_from_a_lost_soul_leaves_them_resting_again():
+    """REQUESTED 2026-09-15: the aware loop belongs inside the radius.
+
+    The original has no way out of state 8 - ``checkCollisionsWithPlayer``
+    only ever moves 9 -> 8 and every sound loops - so once you had been near
+    someone, they called after you for the rest of the level.  Here the
+    abandoned line is given one play and then they go back to the loop they
+    started on.
+    """
+    bus, mi, bank, lv = build()
+    t = start(bus, lv)
+    baby = lv.agent('baby')
+    resting = baby._current_sound_name
+    assert resting == baby.rest_sound
+
+    def stand(x, when):
+        lv.player.position = (x, BABY[1])
+        bus.post('PGE_MESSAGE_PlayerMovedToPosition',
+                 {'position': lv.player.position})
+        lv.update(when)
+
+    stand(BABY[0] - 60.0, t + 0.1)
+    assert baby.state == ALERT
+    assert baby._current_sound_name == baby.alert_sound
+
+    stand(BABY[0] - 400.0, t + 0.2)
+    assert baby.state == ABANDONED
+    assert baby._current_sound_name == baby.abandon_sound
+
+    # still saying its piece
+    stand(BABY[0] - 400.0, t + 0.3)
+    assert baby.state == ABANDONED, 'it should not be cut short'
+
+    # and once the line is over, back to the loop it started on
+    line = bank.sounds[baby.abandon_sound].duration
+    stand(BABY[0] - 400.0, t + 0.2 + line + 0.05)
+    assert baby.state == REST
+    stand(BABY[0] - 400.0, t + 0.2 + line + 0.1)
+    assert baby._current_sound_name == resting, 'back to the resting call'
+    assert baby.sound.looping
+
+    # coming back interrupts it the ordinary way
+    stand(BABY[0] - 60.0, t + 0.2 + line + 0.2)
+    assert baby.state == ALERT
+    assert baby._current_sound_name == baby.alert_sound
 
 
 def test_a_hog_standing_over_a_noise_ignores_the_guts_underfoot():

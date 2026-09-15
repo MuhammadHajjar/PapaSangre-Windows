@@ -183,6 +183,23 @@ gets about two frames before the roar takes over.
 
 The places the port deliberately does not sound like Papa Sangre.
 
+### Walking away from a lost soul leaves them resting again
+
+**The original has no way out of state 8.**
+`-[PGEDilemma checkCollisionsWithPlayer]` only ever moves 9 (alert) to 8
+(abandoned) — 8 is reachable from 9 and nowhere else — and `playSound:` ends
+in `play:` with `mov w2, #1` at 0x1000457c8, so every dilemma sound loops.
+Once you had been near the baby, the old man, the girl or the siren, they
+called after you for the rest of the level.
+
+Reported by a player on 2026-09-14 and asked for on 2026-09-15: the abandoned
+line now gets **one play**, timed by its own duration, and then they go back to
+the resting loop they started on. Which also means the aware loop is only ever
+heard inside `alertDistance`, where it belongs. Re-entering the radius
+interrupts it the ordinary way, because state 9 is set before the check runs.
+
+This is the only dilemma sound that does not loop.
+
 ### ps1_17's third note is given a voice
 
 `note3` in *Papa Sangre Says* is the **only collectible in the game with an
