@@ -1108,3 +1108,56 @@ def test_the_rebinding_screen_sees_a_pulled_trigger():
     assert g.pressed_trigger() == ''
     values[pygame.CONTROLLER_AXIS_TRIGGERRIGHT] = TRIGGER_PRESS + 0.2
     assert g.pressed_trigger() == 'righttrigger'
+
+
+# ------------------------------------------------- where the save is written
+def test_a_game_run_from_inside_the_zip_saves_somewhere_that_survives():
+    """Reported after 1.0.3: "if you alt-F4 or exit the game from Task
+    Manager, the game saves nothing".
+
+    The save code was fine - it writes on every unlock, and atomically.  The
+    folder was not: double-clicking the exe inside the downloaded zip makes
+    Explorer unpack it under %TEMP% and run it there, so the save went into a
+    folder Windows later deletes.  It goes to the user's own app data instead
+    now, which is the one place that is certain to persist.
+    """
+    from papasangre.util import paths                        # noqa: PLC0415
+    real_frozen, real_exe = paths.FROZEN, sys.executable
+    zipish = os.path.join(tempfile.gettempdir(), 'Temp1_PapaSangre.zip')
+    os.makedirs(zipish, exist_ok=True)
+    try:
+        paths.FROZEN = True
+        sys.executable = os.path.join(zipish, 'Play Papa Sangre.exe')
+        assert paths.running_from_throwaway(), 'a temp folder is throwaway'
+        root = paths.writable_root()
+        assert not root.startswith(os.path.realpath(tempfile.gettempdir())), root
+        assert 'Papa Sangre' in root, root
+    finally:
+        paths.FROZEN, sys.executable = real_frozen, real_exe
+
+
+def test_a_normally_installed_game_still_saves_beside_the_exe():
+    """The ordinary case must not move: put the new exe beside your config
+    folder and your keys, settings and progress are still picked up."""
+    from papasangre.util import paths                        # noqa: PLC0415
+    real_frozen, real_exe = paths.FROZEN, sys.executable
+    # Not tempfile.mkdtemp(): that lives *inside* %TEMP%, which is exactly
+    # what the new check calls throwaway.  ROOT is a real folder that is not.
+    home = ROOT
+    try:
+        paths.FROZEN = True
+        sys.executable = os.path.join(home, 'Play Papa Sangre.exe')
+        assert not paths.running_from_throwaway()
+        assert paths.writable_root() == home
+    finally:
+        paths.FROZEN, sys.executable = real_frozen, real_exe
+
+
+def test_an_unwritable_folder_counts_as_throwaway_too():
+    """Program Files, or anywhere else the exe cannot write: better the save
+    goes to the user's own directory than nowhere at all."""
+    from papasangre.util import paths                        # noqa: PLC0415
+    missing = os.path.join(tempfile.mkdtemp(), 'not-created')
+    assert not paths._can_write(missing), 'a folder that is not there'
+    d = tempfile.mkdtemp()
+    assert paths._can_write(d)

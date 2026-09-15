@@ -446,6 +446,17 @@ def main(rep) -> int:
     padmap = PadMap.load()
     settings = Settings()
     progress = GameProgress()
+    # Running the exe from inside the zip puts the save in a folder Windows
+    # throws away, so the game appears to remember nothing however far you
+    # get.  It saves properly now - somewhere that survives - but the player
+    # should still be told, because the fix for it is theirs to make.
+    if paths.running_from_throwaway():
+        rep.show(f'  save location : {paths.config_dir()}')
+        rep.say('You are running the game from inside the zip file, or from a '
+                'folder it cannot write to. Your progress is being saved in '
+                'your app data folder instead. To keep everything together, '
+                'close the game and extract it to a folder of its own.')
+        time.sleep(1.0)
     rep.show(f'turn speed    : {settings.turn_rate:.0f} deg/s')
 
     game = Game(engine, base)

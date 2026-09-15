@@ -39,8 +39,56 @@ def writable_root() -> str:
             base = (os.environ.get('HOME') or os.path.expanduser('~'))
             return os.path.join(base, 'Library', 'Application Support',
                                 'Papa Sangre')
-        return os.path.dirname(sys.executable)
+        exe_dir = os.path.dirname(sys.executable)
+        if running_from_throwaway():
+            base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
+            return os.path.join(base, 'Papa Sangre')
+        return exe_dir
     return resource_root()
+
+
+def running_from_throwaway() -> bool:
+    """True when the executable sits somewhere Windows will delete.
+
+    Double-clicking the exe **inside** the downloaded zip does not extract it.
+    Explorer unpacks to a folder under ``%TEMP%`` and runs it from there, so a
+    save written beside the executable goes into that folder and is thrown
+    away with it.  What the player sees is a game that remembers nothing, no
+    matter how far they get - reported as "the game saves nothing" and easy to
+    mistake for the save code being broken, when the save code has already
+    written the file and it is the folder that is temporary.
+
+    The same answer covers an executable somewhere it may not write at all,
+    like Program Files: better a save in the user's own directory than no save
+    and no way to tell.
+    """
+    if not FROZEN:
+        return False
+    exe_dir = os.path.dirname(sys.executable)
+    try:
+        tmp = os.path.realpath(tempfile.gettempdir())
+        here = os.path.realpath(exe_dir)
+        if os.path.commonpath([here, tmp]) == tmp:
+            return True
+    except (OSError, ValueError):
+        pass                      # different drives, or a path we cannot read
+    return not _can_write(exe_dir)
+
+
+def _can_write(d: str) -> bool:
+    """Whether a file can actually be created in ``d``.
+
+    ``os.access`` lies often enough on Windows to be worth not trusting, so
+    this writes something and removes it again.
+    """
+    probe = os.path.join(d, '.papasangre_write_test')
+    try:
+        with open(probe, 'w', encoding='utf-8') as fh:
+            fh.write('')
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
 
 
 def resource(*parts: str) -> str:
