@@ -341,6 +341,32 @@ def run_menu(menu, src, rep, clock, engine=None, settings=None,
         clock.tick(60)
 
 
+def after_game_complete(game, src, rep, clock, engine, settings, progress,
+                        base, keymap=None, padmap=None):
+    """The end of the game.  Returns a level to play, or None to stop.
+
+    ps1_25 sends ``PresentAdiosVC`` from both of its doors, the good ending and
+    the bad one, and the original answered it by presenting
+    ``PGEAdiosViewController`` over ``playMenuAtmos``: a screen you are left
+    sitting on, with the game still running behind it.
+
+    This used to end the process instead, which from the player's side is the
+    game vanishing the moment they beat it - reported as a crash, and fairly.
+    You come back to the main menu now, with the last level's atmosphere still
+    going underneath, and every level you have unlocked is there to replay.
+    """
+    finished_name = game.level_name
+    progress.player_did_complete_level(finished_name)
+    rep.show(f'  {finished_name} complete - the game is over')
+    ambience = keep_ambience(game)
+    rep.say('You have finished Papa Sangre.')
+    time.sleep(2.5)
+    chosen = shell(game, src, rep, clock, engine, settings, progress, base,
+                   keymap, padmap)
+    stop_ambience(ambience)
+    return chosen
+
+
 def options_loop(src, rep, clock, engine, settings, keymap, padmap) -> str:
     """Options, and the two rebinding screens underneath it.
 
@@ -564,9 +590,16 @@ def main(rep) -> int:
                      f'facing {p.bearing_degrees:5.1f}  bpm {p.walk_bpm:6.1f}')
 
         if game.finished and game.game_complete:
-            rep.show(f'  {game.level_name} complete - the game is over')
-            rep.say('You have finished Papa Sangre.')
-            running = False
+            nxt3 = after_game_complete(game, src, rep, clock, engine, settings,
+                                       progress, base, keymap, padmap)
+            if nxt3 is None:
+                running = False
+            else:
+                t0 = time.perf_counter()
+                game.load(nxt3, 0.0)
+                progress.player_did_unlock_level(nxt3)
+                last_report = 0.0
+                announce_level(game, rep, keymap)
         elif game.finished or (game.level is not None
                                and game.level.shutting_down
                                and game.next_level == game.level_name):

@@ -441,3 +441,118 @@ if __name__ == '__main__':
             print(f'  FAIL  {fn.__name__}: {e}')
     print(f'{len(fns) - failed} of {len(fns)} passed')
     raise SystemExit(1 if failed else 0)
+
+
+def test_the_girl_screams_when_something_comes_near_and_only_once():
+    """Reported after 1.0.1: "the little girl's scream mechanic doesn't work
+    at all... when I got really close to the hog, she didn't scream".
+
+    It did not, and the reason it was missed is that **no level mentions the
+    sound**.  ``dilemma_girl_monsterprox`` is hardcoded in ``alertEnemy:``
+    at 0x10001e274; ps1_18 only gives the girl an
+    ``ApplyProximityRadiusToPlayer:value=40`` on collide, and the scream comes
+    out of the enemy that walks into that radius.  ``withinRadius`` is the
+    edge: she gives you away once per approach, not once per step.
+    """
+    from papasangre.entities.monster import GIRL_PROXIMITY_SOUND  # noqa: PLC0415
+    bus, _mi, bank, lv, t = started('ps1_18')
+    for n in ('note1', 'hog1', 'girl'):
+        bus.post('PGE_MESSAGE_ActivateAgentWithName', {'name': n})
+    t += 0.1
+    bus.now = t
+    lv.update(t)
+    hog = lv.agent('hog1')
+
+    t = collect(bus, lv, t, 'girl')
+    assert lv.agent('girl').collected, 'she has to be carried first'
+    assert lv.player.proximity_radius == 40.0
+
+    bank.played.clear()
+    hog.position = (lv.player.position[0] + 10.0, lv.player.position[1])
+    hog.player_position = lv.player.position
+    bus.post('PGE_MESSAGE_AlertEnemiesWithinRadius',
+             {'radius': str(lv.player.proximity_radius), 'to': 'player'})
+    t += 0.1
+    bus.now = t
+    lv.update(t)
+    assert GIRL_PROXIMITY_SOUND in bank.played, 'she never gave you away'
+    assert hog.within_radius
+
+    # a second step with the hog still on top of you must not scream again
+    bank.played.clear()
+    bus.post('PGE_MESSAGE_AlertEnemiesWithinRadius',
+             {'radius': str(lv.player.proximity_radius), 'to': 'player'})
+    t += 0.1
+    bus.now = t
+    lv.update(t)
+    assert GIRL_PROXIMITY_SOUND not in bank.played, 'once per approach'
+
+    # walk away, come back, and she gives you away again
+    hog.player_position = (lv.player.position[0] + 500.0, lv.player.position[1])
+    bus.post('PGE_MESSAGE_AlertEnemiesWithinRadius',
+             {'radius': str(lv.player.proximity_radius), 'to': 'player'})
+    t += 0.1
+    bus.now = t
+    lv.update(t)
+    assert not hog.within_radius, 'leaving has to clear the latch'
+    bank.played.clear()
+    hog.player_position = lv.player.position
+    bus.post('PGE_MESSAGE_AlertEnemiesWithinRadius',
+             {'radius': str(lv.player.proximity_radius), 'to': 'player'})
+    t += 0.1
+    bus.now = t
+    lv.update(t)
+    assert GIRL_PROXIMITY_SOUND in bank.played
+
+
+def test_nothing_is_still_playing_after_a_level_shuts_down():
+    """Reported after 1.0.1: "in certain moments, sounds keep playing... in
+    level 23 when you go to the exit, if the chickens haven't been released,
+    the cage loop will keep playing".
+
+    ``deactivate`` fires ``OnDeactivate`` whether or not the agent was ever
+    active, and ps1_23's ``chicken_1`` answers that by re-arming the cage
+    launcher.  Landing behind the shutdown sweep, the launcher came back to
+    life with its alarm looping and nothing left to stop it.  The condition
+    the player spotted is exact: it only happens with the chickens still
+    caged, because a released ``chicken_1`` has already re-armed the launcher
+    earlier and the sweep then finds it in the ordinary way.
+    """
+    for stem in ('ps1_23', 'ps1_7', 'ps1_17', 'ps1_25'):
+        bus, _mi, bank, lv = build(stem)
+        lv.start(0.0)
+        t = 0.5
+        bus.now = t
+        lv.update(t)
+        for _ in range(20):
+            t += 0.1
+            bus.now = t
+            lv.update(t)
+        bus.post('PGE_MESSAGE_ShutDownLevel', {'name': 'exit'})
+        for _ in range(5):
+            t += 0.1
+            bus.now = t
+            lv.update(t)
+        still = [n for n, s in bank.sounds.items() if getattr(s, 'playing', False)]
+        assert not still, f'{stem} left {still} playing past the exit'
+
+
+def test_the_third_note_of_papa_sangre_says_can_be_heard():
+    """Reported after 1.0.1: "the third note in the papa says level doesn't
+    spawn properly. You can still collect it by following the guide's voice,
+    but you never actually hear it".
+
+    Exactly right, and it is the original's own data: ps1_17's ``note3`` is
+    the only collectible in the game with an empty ``loopSound``, and ps1_17's
+    playlist is the only one of the five brass levels that does not carry the
+    d note.  Every sibling - 13, 14, 15, 16, 18 - gives its third note
+    ``note_brass_01_dry_d_living_+5``.  Filling it in is a **divergence**, not
+    a recovery.
+    """
+    bus, _mi, bank, lv = build('ps1_17')
+    note3 = lv.agent('note3')
+    assert note3.loop_sound == lv.THIRD_NOTE
+    # and the levels that were never broken are untouched
+    for stem in ('ps1_13', 'ps1_16', 'ps1_18'):
+        _b, _m, _bk, other = build(stem)
+        assert other.agent('note3').loop_sound == 'note_brass_01_dry_d_living_+5'

@@ -43,11 +43,18 @@ binary zip) or `vendor/makemhr-mac/makemhr` (Mac, built and committed).  The
 Mac OpenAL dylib and makemhr are built once per machine with
 `tools/build_openal_mac.sh` and committed.
 
-The original's compiled binary is *not* here, and two scripts want it:
-`tools/extract_hrtf.py`, which is how `tools/embedded_hrtf.dat` was pulled out
-in the first place, and `tools/psdis.py`, which produces the arm64 disassembly
-the port was reverse-engineered from. Neither is needed to build or play. Drop
-the app at `reference/Payload/Papa Sangre.app/` if you want to run them.
+The original's arm64 binary is here too, at
+`reference/Payload/Papa Sangre.app/Papa Sangre`. Nothing needs it to build or
+play, but it is the source of truth for the reverse engineering, and two
+scripts read it:
+
+    python tools/psdis.py .           the whole-binary disassembly, into tools/dis/
+    python tools/extract_hrtf.py      the IRCAM HRTF table (already committed)
+
+`psdis.py` is worth running before you touch the engine. The port was written
+against that disassembly, and `PORTING_STATUS.md` cites it by address
+throughout, so being able to look one up is the difference between reading the
+journal and checking it.
 
 ## Running from source
 

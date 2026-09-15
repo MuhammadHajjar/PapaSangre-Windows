@@ -235,3 +235,70 @@ if __name__ == '__main__':
             print(f'  FAIL  {fn.__name__}: {e}')
     print(f'{len(fns) - failed} of {len(fns)} passed')
     raise SystemExit(1 if failed else 0)
+
+
+def test_a_hog_that_loses_you_is_only_quiet_for_as_long_as_it_grunts():
+    """Reported after 1.0.1: a hog that gives up "is as if it is not there".
+
+    ``playSound:looping:`` returns the duration of what it started, and state 6
+    hands that to ``setDistractedTime:`` (0x10001dc20).  So the search lasts
+    exactly as long as the "not there" grunt: the grunt ends, the hog gives up
+    in the same breath and its patrol loop comes straight back.  Reading the
+    level's own ``distractedTime`` instead left it standing silent for the
+    balance of that timer - 10 s here, and 90 s in ps1_15 - which is a hog
+    deleting itself from the level.
+    """
+    from papasangre.entities.monster import AT_POSITION, IDLE     # noqa: PLC0415
+    bus, _mi, bank, lv = build()
+    t = start(bus, lv)
+    hog = lv.agent('hog1')
+    grunt = bank.sounds[hog.not_there_sound].duration
+
+    hog.change_state_to(AT_POSITION)
+    t += 1.0 / 60.0
+    bus.now = t
+    lv.update(t)
+    assert hog._current_sound_name == hog.not_there_sound
+    assert abs(hog.distracted_time - grunt) < 1e-6, \
+        'the search is the length of the grunt, not the map property'
+
+    # still searching while the grunt is running
+    t += grunt * 0.5
+    bus.now = t
+    lv.update(t)
+    assert hog.state == AT_POSITION
+
+    # and audible again as soon as it is over
+    t += grunt * 0.6
+    bus.now = t
+    lv.update(t)
+    assert hog.state == IDLE
+    t += 1.0 / 60.0
+    bus.now = t
+    lv.update(t)
+    assert hog._current_sound_name == hog.default_sound, \
+        'the patrol loop has to come back, or the hog is silent and gone'
+
+
+def test_an_enemy_sent_to_attack_borrows_its_chase_sound_and_keeps_coming():
+    """0x10001d518: no attackSound means the chaseSound is copied into it.
+
+    And that branch jumps over ``setDistractedTime:`` (0x10001d588), so an
+    enemy on its way to attack never gives up on a timer the way a searching
+    one does.
+    """
+    from papasangre.entities.monster import AT_POSITION           # noqa: PLC0415
+    bus, _mi, bank, lv = build()
+    t = start(bus, lv)
+    hog = lv.agent('hog1')
+    assert not hog.attack_sound, 'ps1_5 gives its hog no attackSound'
+    hog.should_attack_on_wanted_position = True
+    hog.change_state_to(AT_POSITION)
+    before = hog.distracted_time
+    t += 1.0 / 60.0
+    bus.now = t
+    lv.update(t)
+    assert hog.attack_sound == hog.chase_sound, 'it should have borrowed it'
+    assert hog._current_sound_name == hog.chase_sound
+    assert hog.sound.looping, 'playSound: is the looping one'
+    assert hog.distracted_time == before, 'attacking does not start a timer'

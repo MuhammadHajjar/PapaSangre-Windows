@@ -77,6 +77,36 @@ def test_a_corrupt_save_does_not_stop_the_game():
     assert g.last_unlocked_level == 'ps1_1'
 
 
+def test_a_torn_save_falls_back_to_the_backup_instead_of_starting_over():
+    """Reported after 1.0.0: "the game crashes, and all of your progress is
+    lost".  A save is rewritten on every unlock, and opening it for writing
+    truncates it first, so anything that killed the process around that moment
+    left a file that would not parse - and an unparseable save was treated as
+    no save at all."""
+    path = os.path.join(tempfile.mkdtemp(), 'progress.json')
+    g = GameProgress(path=path)
+    for i in range(1, 6):
+        g.player_did_unlock_level(f'ps1_{i}')
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write('{"ps1_1_locked": tr')          # a write that did not finish
+    back = GameProgress(path=path)
+    # The backup is the file as it was one write ago, so the guarantee is that
+    # you lose at most the last thing you did - not the playthrough.
+    assert back.last_unlocked_level == 'ps1_4'
+    assert back.is_level_unlocked('ps1_3')
+
+
+def test_the_save_is_never_left_half_written():
+    """The real file is only ever replaced by a complete one."""
+    import json                                                  # noqa: PLC0415
+    path = os.path.join(tempfile.mkdtemp(), 'progress.json')
+    g = GameProgress(path=path)
+    for i in range(1, 4):
+        g.player_did_unlock_level(f'ps1_{i}')
+        json.load(open(path, encoding='utf-8'))   # parses after every write
+    assert not os.path.exists(path + '.tmp'), 'no scratch file left behind'
+
+
 # --------------------------------------------------------------- pause
 def build():
     bus = MessageBus()

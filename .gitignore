@@ -12,8 +12,9 @@ __pycache__/
 
 # The original game.  The data the port runs on is committed - audio, maps,
 # playlists, the message and object lists, and the HRTF table - so a clone
-# builds and plays with nothing else to find.  Their compiled binary, code
-# signature, artwork and nibs are not: none of them is needed here.
+# builds and plays with nothing else to find.  The arm64 binary is here too,
+# which is what the disassembler and the HRTF extractor read.  The code
+# signature, artwork and nibs are not: nothing here needs them.
 reference/*
 !reference/Payload/
 reference/Payload/*
@@ -25,6 +26,7 @@ reference/Payload/Papa Sangre.app/*
 !reference/Payload/Papa Sangre.app/*.wav
 !reference/Payload/Papa Sangre.app/*.m4a
 !reference/Payload/Papa Sangre.app/*.plist
+!reference/Payload/Papa Sangre.app/Papa Sangre
 
 # Derived from the original binary and regenerable with the scripts in tools/.
 # The HRTF table is the exception: it is committed, so nobody has to have the

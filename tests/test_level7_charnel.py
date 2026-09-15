@@ -317,9 +317,11 @@ def test_a_hog_standing_over_a_noise_ignores_the_guts_underfoot():
     assert hog.distracted_timer >= 0.0
 
     quiet = hog._current_sound_name
-    # ps1_7's hog searches for distractedTime = 5 s, so stay inside that
+    # The search lasts exactly as long as the "not there" grunt, because
+    # state 6 overwrites distractedTime with that sound's own duration
+    # (0x10001dc20) - 1 s in the fake bank.  Stay inside it.
     for _ in range(8):
-        t += 0.45
+        t += 0.1
         bus.now = t
         bus.post('PGE_MESSAGE_AlertAllEnemies',
                  {'to': 'position', 'position': lv.player.position})

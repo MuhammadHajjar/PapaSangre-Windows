@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 
 from ..util import paths
 
@@ -52,21 +53,44 @@ class GameProgress:
 
     # ------------------------------------------------------------ storage
     def load(self) -> 'GameProgress':
-        try:
-            with open(self.path, encoding='utf-8') as fh:
-                stored = json.load(fh)
+        """Read the save, falling back to the last known-good copy.
+
+        An unreadable save used to mean an empty one, which is a whole
+        playthrough gone for a file that may only be half written.  The backup
+        is tried first instead, and only when neither can be read does the
+        progress start over.
+        """
+        for candidate in (self.path, self.path + '.bak'):
+            try:
+                with open(candidate, encoding='utf-8') as fh:
+                    stored = json.load(fh)
+            except (OSError, ValueError):
+                continue          # a corrupt save must never stop the game
             if isinstance(stored, dict):
                 self.values = stored
-        except (OSError, ValueError):
-            self.values = {}      # a corrupt save must never stop the game
+                return self
+        self.values = {}
         return self
 
     def synchronize(self) -> None:
-        """``[NSUserDefaults synchronize]`` - write it out now."""
+        """``[NSUserDefaults synchronize]`` - write it out now.
+
+        Written beside the save and moved into place, because opening the real
+        file for writing truncates it first: anything that stopped the process
+        in that window - and until 1.0.1 finishing the game stopped it right
+        after a write - left a half-written save behind.  The previous file is
+        kept as ``.bak`` so there is always one good copy on disk.
+        """
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            with open(self.path, 'w', encoding='utf-8') as fh:
+            tmp = self.path + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as fh:
                 json.dump(self.values, fh, indent=2, sort_keys=True)
+                fh.flush()
+                os.fsync(fh.fileno())
+            if os.path.exists(self.path):
+                shutil.copyfile(self.path, self.path + '.bak')
+            os.replace(tmp, self.path)
         except OSError:
             pass                  # a read-only install must still be playable
 
