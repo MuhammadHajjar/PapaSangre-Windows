@@ -91,6 +91,14 @@ class PygameInput:
                 if name and event.type in (pygame.CONTROLLERBUTTONDOWN,
                                            pygame.JOYBUTTONDOWN):
                     return name
+            # A trigger sends no event, so it has to be looked at rather than
+            # waited for.  Without this the rebinding screen simply ignored
+            # anyone pulling L2 or R2, which is how the feet could not be put
+            # on the triggers.
+            pulled = self.pad.pressed_trigger()
+            if pulled:
+                self.pad._trigger_down[pulled] = True
+                return pulled
             pygame.time.wait(10)
         return None
 
@@ -112,6 +120,9 @@ class PygameInput:
                     out.append((action, phase, now))
             else:
                 out.extend(self.pad.handle(event))
+        # The triggers are axes, so they arrive as no event at all and have to
+        # be read once a frame - see Gamepad.poll_triggers.
+        out.extend(self.pad.poll_triggers())
         return out
 
     def is_held(self, action) -> bool:

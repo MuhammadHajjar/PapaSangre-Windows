@@ -317,7 +317,7 @@ meaning off an iPhone. The credits line is the binary's own, typo included.
 | addition | why |
 |---|---|
 | Controller: d-pad = feet, right stick = turn, A select, B back, Start pause | asked for. The feet are on the **hat**, not a stick, because a step is a discrete press and the engine times the interval between them |
-| Every key **and every controller button** rebindable, each with a restore-defaults row | asked for. Buttons are stored by SDL's own names (`a`, `dpleft`), never by raw number, so a binding made on one pad still means the same button on another |
+| Every key **and every controller button** rebindable, each with a restore-defaults row. The triggers are included, which takes reading them as axes once a frame - SDL sends no button event for them, so otherwise nothing could be bound to L2 or R2 at all | asked for. Buttons are stored by SDL's own names (`a`, `dpleft`), never by raw number, so a binding made on one pad still means the same button on another |
 | Options: volume, turning speed, keys, controller buttons | asked for. The original had no options screen at all: volume was the iOS hardware volume, and the only sensitivity slider in the binary belongs to `PGEStepsWithHeightViewController`, a control scheme Papa Sangre 1 never switches on |
 | Pause menu | the original paused on a triple-tap and had no menu behind it |
 

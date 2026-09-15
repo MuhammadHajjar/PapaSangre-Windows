@@ -14,6 +14,7 @@ options menu, exactly like the keyboard; the defaults are:
 D-pad left / right   left foot / right foot, and left/right in a menu
 D-pad up / down      move through a menu
 Right stick X        turn, proportional to how far it is pushed
+Triggers             bindable like any button, though bound to nothing
 A                    select, and skip narration
 B / Back             back
 Start                pause menu
@@ -54,6 +55,20 @@ from .padmap import PadMap
 
 #: Below this the stick is treated as centred.  Cheap pads rest at 0.1 or so.
 DEAD_ZONE = 0.25
+
+#: A trigger is an axis, not a button, so "pressed" has to be decided here.
+#: Two thresholds rather than one: a trigger held near the edge of a single
+#: threshold would otherwise chatter, and with the feet bound to L2 and R2 that
+#: chatter is a burst of phantom footsteps.
+TRIGGER_PRESS = 0.5
+TRIGGER_RELEASE = 0.35
+
+#: Raw joystick axis numbers for the triggers, used only for a pad SDL has no
+#: mapping for.  A guess, like FALLBACK_BUTTON_NAMES: 4 and 5 is the usual
+#: order.  Pads differ on whether an unpressed trigger rests at -1 or at 0, so
+#: the test is "past the threshold", which is true only when actually pulled
+#: either way round.
+FALLBACK_TRIGGER_AXES = {'lefttrigger': 4, 'righttrigger': 5}
 
 
 def _button_names() -> dict[int, str]:
@@ -116,6 +131,7 @@ class Gamepad:
         self.held: set[str] = set()
         self._hat = (0, 0)
         self._names = _button_names()
+        self._trigger_down = {'lefttrigger': False, 'righttrigger': False}
         if pygame is None:
             return
         try:
@@ -205,6 +221,57 @@ class Gamepad:
             if new and new != old:
                 self._emit([new], 'down', now, out)
         return out
+
+    # ------------------------------------------------------------ triggers
+    def _trigger_value(self, name: str) -> float:
+        """How far a trigger is pulled, 0..1."""
+        if pygame is None:
+            return 0.0
+        if self.controller is not None:
+            axis = (pygame.CONTROLLER_AXIS_TRIGGERLEFT if name == 'lefttrigger'
+                    else pygame.CONTROLLER_AXIS_TRIGGERRIGHT)
+            try:
+                v = self.controller.get_axis(axis)
+            except (pygame.error, AttributeError):
+                return 0.0
+            # The controller API reports 0..32767 for a trigger.
+            return max(0.0, min(1.0, v / 32767.0)) if abs(v) > 1 else max(0.0, float(v))
+        if self.joystick is None:
+            return 0.0
+        try:
+            return float(self.joystick.get_axis(FALLBACK_TRIGGER_AXES[name]))
+        except (pygame.error, IndexError, KeyError):
+            return 0.0
+
+    def poll_triggers(self) -> list[tuple[str, str, float]]:
+        """Turn the two trigger axes into ordinary presses and releases.
+
+        Called every frame, because an axis produces no button event of its
+        own - which is why the triggers could not be bound to anything at all
+        until now.  The press is timestamped when it is noticed, and the feet
+        are timed from the press, so a trigger foot lands like a key does.
+        """
+        out: list[tuple[str, str, float]] = []
+        if pygame is None or not self.connected:
+            return out
+        now = time.perf_counter()
+        for name in ('lefttrigger', 'righttrigger'):
+            value = self._trigger_value(name)
+            was = self._trigger_down[name]
+            if not was and value >= TRIGGER_PRESS:
+                self._trigger_down[name] = True
+                self._emit([name], 'down', now, out)
+            elif was and value <= TRIGGER_RELEASE:
+                self._trigger_down[name] = False
+                self._emit([name], 'up', now, out)
+        return out
+
+    def pressed_trigger(self) -> str:
+        """Whichever trigger is pulled right now, for the rebinding screen."""
+        for name in ('lefttrigger', 'righttrigger'):
+            if self._trigger_value(name) >= TRIGGER_PRESS:
+                return name
+        return ''
 
     def hat_name(self, value) -> str:
         """The d-pad name a raw hat position means, for the rebinding screen."""

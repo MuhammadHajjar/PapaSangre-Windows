@@ -5,6 +5,11 @@ recovered; what is shared with the keyboard is the *action* list, which is
 recovered, so a pad button and a key that do the same thing are literally the
 same action downstream.
 
+The **triggers are in here too**, as ``lefttrigger`` and ``righttrigger``.
+SDL reports them as axes rather than buttons, so nothing would ever have
+offered them to bind; they are read each frame and turned into an ordinary
+press and release, which is what lets someone put their feet on L2 and R2.
+
 Buttons are named the way SDL's controller database names them - ``a``, ``b``,
 ``start``, ``dpleft`` - **not** by raw joystick number.  That matters: raw
 numbering is per-device, so button 0 is A on an Xbox pad and Square on a
@@ -35,6 +40,8 @@ BUTTONS: tuple[tuple[str, str], ...] = (
     ('guide', 'Guide'),
     ('leftshoulder', 'Left shoulder, L1'),
     ('rightshoulder', 'Right shoulder, R1'),
+    ('lefttrigger', 'Left trigger, L2'),
+    ('righttrigger', 'Right trigger, R2'),
     ('leftstick', 'Left stick click, L3'),
     ('rightstick', 'Right stick click, R3'),
     ('dpup', 'D-pad up'),

@@ -1009,3 +1009,102 @@ def test_quitting_from_that_menu_still_ends_the_game():
     finally:
         play.shell = real
     assert out is None
+
+
+# ------------------------------------------------------------- the triggers
+def fake_trigger_pad(left=0.0, right=0.0):
+    """A recognised pad whose two trigger axes we can move by hand."""
+    import types                                                 # noqa: PLC0415
+    import pygame                                                # noqa: PLC0415
+    from papasangre.input.gamepad import Gamepad, _button_names  # noqa: PLC0415
+    from papasangre.input.padmap import PadMap                   # noqa: PLC0415
+    values = {pygame.CONTROLLER_AXIS_TRIGGERLEFT: left,
+              pygame.CONTROLLER_AXIS_TRIGGERRIGHT: right}
+    g = Gamepad.__new__(Gamepad)
+    g.controller = types.SimpleNamespace(
+        get_axis=lambda a: values.get(a, 0.0), name='test controller',
+        quit=lambda: None)
+    g.joystick = None
+    g.held = set()
+    g._hat = (0, 0)
+    g._names = _button_names()
+    g.padmap = PadMap()
+    g._trigger_down = {'lefttrigger': False, 'righttrigger': False}
+    g.name = 'test controller'
+    return g, values
+
+
+def test_the_triggers_can_be_bound_at_all():
+    """Reported after 1.0.2: "I can not assign my left/right triggers as my
+    left/right foot on controller".
+
+    They could not be, and the reason is that SDL reports a trigger as an
+    *axis*: it sends no button event, so the rebinding screen never saw one
+    being pulled and the pad map had no name to store.  They are read once a
+    frame now and turned into an ordinary press and release.
+    """
+    from papasangre.input.padmap import BUTTONS, PadMap          # noqa: PLC0415
+    names = [n for n, _label in BUTTONS]
+    assert 'lefttrigger' in names and 'righttrigger' in names
+    pm = PadMap()
+    pm.bind('foot_left', ['lefttrigger'])
+    assert pm.actions_for('lefttrigger') == ['foot_left']
+    assert 'L2' in pm.describe('foot_left'), pm.describe('foot_left')
+
+
+def test_pulling_a_trigger_is_a_press_and_letting_go_is_a_release():
+    import pygame                                                # noqa: PLC0415
+    from papasangre.input.gamepad import (TRIGGER_PRESS,         # noqa: PLC0415
+                                          TRIGGER_RELEASE)
+    g, values = fake_trigger_pad()
+    g.padmap.bind('foot_left', ['lefttrigger'])
+
+    assert g.poll_triggers() == [], 'resting triggers say nothing'
+
+    values[pygame.CONTROLLER_AXIS_TRIGGERLEFT] = TRIGGER_PRESS + 0.1
+    out = [(a, p) for a, p, _t in g.poll_triggers()]
+    assert out == [('foot_left', 'down')]
+    assert g.is_held('foot_left')
+
+    # held down: no repeat, a foot is one press
+    assert g.poll_triggers() == [], 'a held trigger must not repeat'
+
+    values[pygame.CONTROLLER_AXIS_TRIGGERLEFT] = 0.0
+    out = [(a, p) for a, p, _t in g.poll_triggers()]
+    assert out == [('foot_left', 'up')]
+    assert not g.is_held('foot_left')
+
+
+def test_a_trigger_resting_on_the_threshold_does_not_chatter():
+    """With a foot on L2, chatter would be a burst of phantom footsteps."""
+    import pygame                                                # noqa: PLC0415
+    from papasangre.input.gamepad import (TRIGGER_PRESS,         # noqa: PLC0415
+                                          TRIGGER_RELEASE)
+    g, values = fake_trigger_pad()
+    g.padmap.bind('foot_right', ['righttrigger'])
+    values[pygame.CONTROLLER_AXIS_TRIGGERRIGHT] = TRIGGER_PRESS + 0.01
+    assert len(g.poll_triggers()) == 1
+    # drifting back between the two thresholds is still "held"
+    for v in (TRIGGER_PRESS - 0.01, TRIGGER_RELEASE + 0.01, TRIGGER_PRESS):
+        values[pygame.CONTROLLER_AXIS_TRIGGERRIGHT] = v
+        assert g.poll_triggers() == [], f'chattered at {v}'
+    values[pygame.CONTROLLER_AXIS_TRIGGERRIGHT] = TRIGGER_RELEASE - 0.01
+    assert [(a, p) for a, p, _t in g.poll_triggers()] == [('foot_right', 'up')]
+
+
+def test_the_controller_api_reports_a_trigger_as_sixteen_bit():
+    """0..32767 from the controller API, like the sticks."""
+    import pygame                                                # noqa: PLC0415
+    g, values = fake_trigger_pad()
+    g.padmap.bind('foot_left', ['lefttrigger'])
+    values[pygame.CONTROLLER_AXIS_TRIGGERLEFT] = 32767
+    assert [(a, p) for a, p, _t in g.poll_triggers()] == [('foot_left', 'down')]
+
+
+def test_the_rebinding_screen_sees_a_pulled_trigger():
+    import pygame                                                # noqa: PLC0415
+    from papasangre.input.gamepad import TRIGGER_PRESS           # noqa: PLC0415
+    g, values = fake_trigger_pad()
+    assert g.pressed_trigger() == ''
+    values[pygame.CONTROLLER_AXIS_TRIGGERRIGHT] = TRIGGER_PRESS + 0.2
+    assert g.pressed_trigger() == 'righttrigger'
