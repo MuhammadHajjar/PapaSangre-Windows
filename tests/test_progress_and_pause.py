@@ -107,6 +107,61 @@ def test_the_save_is_never_left_half_written():
     assert not os.path.exists(path + '.tmp'), 'no scratch file left behind'
 
 
+def test_a_save_already_missing_its_unlocks_is_repaired_from_the_backup():
+    """What players were left doing by hand: "I replaced my progress file with
+    the back file ... it worked, I can now play from where I left off."  A save
+    damaged by the bug below is filled back in from the backup on the next run,
+    so nobody has to go into the folder and swap the files over themselves.
+    """
+    import json                                                  # noqa: PLC0415
+    path = os.path.join(tempfile.mkdtemp(), 'progress.json')
+    with open(path + '.bak', 'w', encoding='utf-8') as fh:
+        json.dump({'ps1_17_locked': True, 'ps1_18_locked': True,
+                   'lastLevelUnlocked': 'ps1_18'}, fh)
+    with open(path, 'w', encoding='utf-8') as fh:                # what was left
+        json.dump({'lastPLaylist': 'ps1_18', 'FINAL_ITD_Intro': True}, fh)
+
+    g = GameProgress(path=path)
+    assert g.is_level_unlocked('ps1_18'), 'the lost unlocks come back'
+    assert g.last_unlocked_level == 'ps1_18'
+    assert g.can_skip_sound('FINAL_ITD_Intro'), 'without losing what was kept'
+
+
+def test_a_second_view_of_the_save_cannot_wipe_what_the_first_wrote():
+    """Reported after 1.0.4: "the levels aren't unlocked", with the unlocks
+    present in ``progress.json.bak`` and missing from ``progress.json``.  The
+    menus and the running level each held their own copy of the save, and each
+    write replaced the file with just that copy's keys, so whichever wrote last
+    threw the other's away - the unlocks, every time, because the level writes
+    a playlist and a heard narration while you are playing it.
+    """
+    path = os.path.join(tempfile.mkdtemp(), 'progress.json')
+    menus = GameProgress(path=path)
+    level = GameProgress(path=path)           # the same save, read twice
+
+    menus.player_did_unlock_level('ps1_1')
+    menus.player_did_unlock_level('ps1_2')    # you reach the second level
+    level.save_last_playlist('ps1_2')         # and it saves as it loads
+    level.save_skippable_sound('FINAL_ITD_Intro')
+
+    back = GameProgress(path=path)
+    assert back.is_level_unlocked('ps1_2'), 'the unlock has to survive'
+    assert back.is_level_unlocked('ps1_1')
+    assert back.last_unlocked_level == 'ps1_2'
+    assert back.can_skip_sound('FINAL_ITD_Intro'), 'and so does the narration'
+    assert back.get_last_playlist() == 'ps1_2'
+
+
+def test_the_copy_doing_the_writing_still_wins_the_keys_it_holds():
+    """Taking in the file's keys must not undo the write that is happening."""
+    path = os.path.join(tempfile.mkdtemp(), 'progress.json')
+    first = GameProgress(path=path)
+    first.save_dilemma_status(True, 'dilemma_1')
+    second = GameProgress(path=path)
+    second.save_dilemma_status(False, 'dilemma_1')     # answered again
+    assert GameProgress(path=path).get_dilemma_status('dilemma_1') is False
+
+
 # --------------------------------------------------------------- pause
 def build():
     bus = MessageBus()

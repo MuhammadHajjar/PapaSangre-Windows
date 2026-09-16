@@ -459,7 +459,12 @@ def main(rep) -> int:
         time.sleep(1.0)
     rep.show(f'turn speed    : {settings.turn_rate:.0f} deg/s')
 
-    game = Game(engine, base)
+    # The game plays through the *same* progress object the menus and the
+    # unlock calls below use.  Letting Game build its own made two copies of
+    # the save in memory, and whichever wrote last replaced the file with its
+    # own idea of it: the levels you had unlocked disappeared the moment the
+    # level you were playing saved a heard narration or its playlist.
+    game = Game(engine, base, progress=progress)
     if start is not None and not game.has_level(start):
         rep.say(f'There is no level called {start}.')
         return 1

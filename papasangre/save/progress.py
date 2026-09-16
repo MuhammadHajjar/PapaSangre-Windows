@@ -59,16 +59,20 @@ class GameProgress:
         playthrough gone for a file that may only be half written.  The backup
         is tried first instead, and only when neither can be read does the
         progress start over.
+
+        A readable save is still topped up from the backup, because a save
+        damaged by the bug 1.0.4 had can be missing keys the backup still
+        holds - see :meth:`_adopt`.  Players were repairing that by hand, swapping
+        ``progress.json.bak`` in for ``progress.json``; the game does it.
         """
         for candidate in (self.path, self.path + '.bak'):
-            try:
-                with open(candidate, encoding='utf-8') as fh:
-                    stored = json.load(fh)
-            except (OSError, ValueError):
+            stored = self._read(candidate)
+            if stored is None:
                 continue          # a corrupt save must never stop the game
-            if isinstance(stored, dict):
-                self.values = stored
-                return self
+            self.values = stored
+            if candidate == self.path:
+                self._adopt(self._read(self.path + '.bak'))
+            return self
         self.values = {}
         return self
 
@@ -80,9 +84,14 @@ class GameProgress:
         in that window - and until 1.0.1 finishing the game stopped it right
         after a write - left a half-written save behind.  The previous file is
         kept as ``.bak`` so there is always one good copy on disk.
+
+        Whatever the file already holds and this copy has never seen is taken
+        in first, so a write can only ever add to the save - see
+        :meth:`_adopt`.
         """
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            self._adopt(self._read(self.path))
             tmp = self.path + '.tmp'
             with open(tmp, 'w', encoding='utf-8') as fh:
                 json.dump(self.values, fh, indent=2, sort_keys=True)
@@ -93,6 +102,31 @@ class GameProgress:
             os.replace(tmp, self.path)
         except OSError:
             pass                  # a read-only install must still be playable
+
+    @staticmethod
+    def _read(path: str) -> dict | None:
+        """The save at ``path``, or None if it is not there or not readable."""
+        try:
+            with open(path, encoding='utf-8') as fh:
+                stored = json.load(fh)
+        except (OSError, ValueError):
+            return None
+        return stored if isinstance(stored, dict) else None
+
+    def _adopt(self, stored: dict | None) -> None:
+        """Take in keys this copy has not seen.  What it holds always wins.
+
+        Nothing is ever removed from the save - every key is written once and
+        then only ever set again - so no other copy of it can hold anything
+        this one is entitled to drop.  Reported after 1.0.4: "the levels
+        aren't unlocked", with the unlocks sitting in ``progress.json.bak``
+        and gone from ``progress.json``.  Two copies of the save were live at
+        once and each rewrote the file with its own keys, so whichever wrote
+        last threw the other's away.  They cannot now, and neither can a
+        second copy of the game running beside this one.
+        """
+        for key, value in (stored or {}).items():
+            self.values.setdefault(key, value)
 
     def _set(self, key: str, value) -> None:
         self.values[key] = value

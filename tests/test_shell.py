@@ -1161,3 +1161,25 @@ def test_an_unwritable_folder_counts_as_throwaway_too():
     assert not paths._can_write(missing), 'a folder that is not there'
     d = tempfile.mkdtemp()
     assert paths._can_write(d)
+
+
+# ------------------------------------------------------------------ the save
+def test_the_game_is_given_the_same_save_the_menus_use():
+    """Reported after 1.0.4: "the levels aren't unlocked".  ``main`` built one
+    GameProgress for the menus and the unlock calls, and ``Game`` quietly built
+    another for the level it was running; the two copies then took turns
+    replacing the file with their own half of the save.  There is one copy.
+    """
+    import inspect                                              # noqa: PLC0415
+    import re                                                   # noqa: PLC0415
+    play = load_play()
+    made = re.search(r' Game\((.*?)\)',
+                     inspect.getsource(play.main), re.S)
+    assert made, 'main has to build the game'
+    assert 'progress=progress' in made.group(1), made.group(1)
+
+
+def test_a_game_handed_a_save_does_not_open_a_second_one():
+    from papasangre.core.game import Game                       # noqa: PLC0415
+    progress = temp_progress()
+    assert Game(FakeEngine(), BUNDLE, progress=progress).progress is progress
