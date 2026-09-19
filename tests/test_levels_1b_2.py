@@ -27,7 +27,7 @@ EXPORTS = os.path.join(BUNDLE, 'Exports', 'Papa Sangre')
 def _build(stem, sounds):
     bus = MessageBus()
     interp = MoveInterpretor(bus)
-    bank = FakeBank(sounds)
+    bank = FakeBank(sounds, clock=lambda: bus.now)
     level = Level(bus, bank).load(os.path.join(EXPORTS, f'{stem}.json'), stem)
     return bus, interp, bank, level
 
@@ -132,11 +132,17 @@ def test_level_1b_leads_to_level_2():
         bus.now = t
         lv.update(t)
     win = lv.agent('FINAL_SWYE_Win')
-    assert win.sound is not None and win.sound.playing
-    win.sound.stop()
-    t += 0.2
-    bus.now = t
-    lv.update(t)
+    assert win.sound is not None
+    assert win.sound.plays >= 1, 'the win narration should have started'
+    # It ends on its own now, the way the engine's does, and **that ending is
+    # what fires OnSoundEnd -> LoadLevelWithName**.  This used to stop the
+    # sound by hand, because the fake never finished on its own - which meant
+    # the chain between levels was only ever tested against a simulated end.
+    for _ in range(6):
+        t += 0.2
+        bus.now = t
+        lv.update(t)
+    assert not win.sound.playing, 'the narration should have finished by now'
     assert lv.finished
     assert lv.next_level == 'ps1_2'
 

@@ -71,7 +71,7 @@ def declared(stem, seen=None, out=None):
 def build():
     bus = MessageBus()
     mi = MoveInterpretor(bus)
-    bank = FakeBank(sorted(declared('ps1_9')))
+    bank = FakeBank(sorted(declared('ps1_9')), clock=lambda: bus.now)
     progress = GameProgress(path=os.path.join(tempfile.mkdtemp(), 'p.json'))
     lv = Level(bus, bank, progress=progress).load(
         os.path.join(EXPORTS, 'ps1_9.json'), 'ps1_9')

@@ -599,3 +599,64 @@ def test_the_siren_does_not_fall_silent_after_you_walk_away():
     assert siren.state == REST
     assert siren.sound.looping, 'she has to be back on a loop, not silent'
     assert siren.sound.playing
+
+
+def test_the_ice_lake_cage_runs_its_whole_cycle_and_leaves_nothing_hanging():
+    """ps1_23's cage, from springing it to being ready again.
+
+    Only testable since the fake sounds began ending on their own: every step
+    of this is driven by a sound finishing or a timer expiring.  Walking into
+    ``chicken_launcher_1`` plays its collect sound and activates ``chicken_1``,
+    whose ``OnActivate`` alerts the hog and schedules its own deactivation 20
+    seconds later; that deactivation re-arms the launcher.  Reported after
+    1.0.5 as the chickens still being heard once the hog had settled, so what
+    this pins is that nothing is left running at either end.
+    """
+    bus, _mi, _bank, lv = build('ps1_23')
+    lv.start(0.0)
+    t = 0.5
+    bus.now = t
+    lv.update(t)
+    for n in ('chicken_launcher_1', 'hog1'):
+        bus.post('PGE_MESSAGE_ActivateAgentWithName', {'name': n})
+    for _ in range(10):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    launcher = lv.agent('chicken_launcher_1')
+    chicken = lv.agent('chicken_1')
+
+    def playing(agent):
+        s = getattr(agent, 'sound', None)
+        return s is not None and s.playing
+
+    lv.player.position = launcher.position
+    bus.post('PGE_MESSAGE_PlayerMovedToPosition', {'position': lv.player.position})
+    for _ in range(6):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert chicken.active, 'springing the cage lets the chickens out'
+    assert playing(chicken)
+
+    # stand well clear so the hog cannot reach the player and end the level
+    far = (launcher.position[0] + 4000.0, launcher.position[1] + 4000.0)
+    lv.player.position = far
+    bus.post('PGE_MESSAGE_PlayerMovedToPosition', {'position': far})
+    for a in lv.agents:
+        a.player_position = far
+
+    while t < 5.0:                       # the collect sound is long over
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert not launcher.collected, 'the collect sound ending re-arms the cage'
+    assert launcher._phase == 'idle'
+
+    while t < 25.0:                      # past chicken_1's 20 second timer
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert not chicken.active, 'the chickens stop on their own timer'
+    assert not playing(chicken), 'and they are not left squawking'
+    assert launcher.active, 'the cage comes back ready to be sprung again'

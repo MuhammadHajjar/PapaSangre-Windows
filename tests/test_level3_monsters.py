@@ -49,7 +49,7 @@ LEVEL3_SOUNDS = [
 def build():
     bus = MessageBus()
     interp = MoveInterpretor(bus)
-    bank = FakeBank(LEVEL3_SOUNDS)
+    bank = FakeBank(LEVEL3_SOUNDS, clock=lambda: bus.now)
     level = Level(bus, bank).load(os.path.join(EXPORTS, 'ps1_3.json'), 'ps1_3')
     return bus, interp, bank, level
 

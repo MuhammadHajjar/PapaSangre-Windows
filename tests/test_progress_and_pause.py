@@ -166,7 +166,7 @@ def test_the_copy_doing_the_writing_still_wins_the_keys_it_holds():
 def build():
     bus = MessageBus()
     mi = MoveInterpretor(bus)
-    bank = FakeBank(LEVEL1_SOUNDS)
+    bank = FakeBank(LEVEL1_SOUNDS, clock=lambda: bus.now)
     lv = Level(bus, bank).load(os.path.join(EXPORTS, 'ps1_1.json'), 'ps1_1')
     return bus, mi, bank, lv
 

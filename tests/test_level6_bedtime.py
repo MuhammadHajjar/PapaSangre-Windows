@@ -63,7 +63,7 @@ def declared(stem, seen=None, out=None):
 def build():
     bus = MessageBus()
     mi = MoveInterpretor(bus)
-    bank = FakeBank(sorted(declared('ps1_6')))
+    bank = FakeBank(sorted(declared('ps1_6')), clock=lambda: bus.now)
     lv = Level(bus, bank).load(os.path.join(EXPORTS, 'ps1_6.json'), 'ps1_6')
     return bus, mi, bank, lv
 

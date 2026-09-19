@@ -24,10 +24,25 @@ EXPORTS = os.path.join(BUNDLE, 'Exports', 'Papa Sangre')
 
 # --------------------------------------------------------------- stub audio
 class FakeSound:
-    def __init__(self, name, duration=1.0):
+    """A stand-in for one sound - and, given a clock, one that **ends**.
+
+    These used to report ``playing`` forever until something stopped them,
+    which made a whole class of bug invisible to the suite: anything whose
+    logic hangs off a one-shot *finishing* could not be exercised at all.
+    A collectible completing its collect sound and re-arming, a lost soul
+    settling back to resting when its abandoned line is over, an enemy timing
+    its search by the length of its own grunt - every one of those is driven
+    by a sound ending, and three real bugs reached players through that gap.
+
+    With a ``clock`` (any callable returning the current time - the tests pass
+    ``lambda: bus.now``) a non-looping sound stops on its own once its
+    duration is up.  Without one the old always-playing behaviour is kept, so
+    a test that never advances a clock still behaves as it did.
+    """
+
+    def __init__(self, name, duration=1.0, clock=None):
         self.name = name
         self.duration = duration
-        self.playing = False
         self.looping = False
         self.spatialized = False
         self.send_to_reverb = False
@@ -35,28 +50,67 @@ class FakeSound:
         self.gain = 1.0
         self.planar = (0.0, 0.0, 0.0)
         self.plays = 0
+        self._clock = clock
+        self._playing = False
+        self._started_at = 0.0
+        self._paused_at = None
+
+    def _now(self):
+        return float(self._clock()) if self._clock is not None else 0.0
+
+    @property
+    def playing(self):
+        if not self._playing:
+            return False
+        if self.looping or self._clock is None:
+            return True
+        return (self._now() - self._started_at) < self.duration
+
+    @playing.setter
+    def playing(self, v):
+        self._playing = bool(v)
+        if v:
+            self._started_at = self._now()
+        self._paused_at = None
 
     def play(self):
-        self.playing = True
+        self._playing = True
+        self._started_at = self._now()
+        self._paused_at = None
         self.plays += 1
 
     def stop(self):
-        self.playing = False
+        self._playing = False
+        self._paused_at = None
 
     def pause(self):
-        self.playing = False
+        if self._playing and self._paused_at is None:
+            self._paused_at = self._now() - self._started_at
+        self._playing = False
 
     def resume(self):
-        self.playing = True
+        self._playing = True
+        # Carry on from where it was, rather than starting the sound again.
+        self._started_at = self._now() - (self._paused_at or 0.0)
+        self._paused_at = None
 
 
 class FakeBank:
     """Enough of SoundBank for the level logic, with no audio device."""
 
-    def __init__(self, names, durations=None):
+    def __init__(self, names, durations=None, clock=None):
         self.durations = durations or {}
-        self.sounds = {n: FakeSound(n, self.durations.get(n, 1.0)) for n in names}
+        self.clock = clock
+        self.sounds = {n: FakeSound(n, self.durations.get(n, 1.0), clock)
+                       for n in names}
         self.played = []
+
+    def set_clock(self, clock):
+        """Give every sound a clock after the fact."""
+        self.clock = clock
+        for s in self.sounds.values():
+            s._clock = clock
+        return self
 
     def sound(self, name):
         s = self.sounds.get(name)
@@ -79,7 +133,8 @@ class FakeBank:
         full = os.path.join(BUNDLE, *rel_path.split('/'))
         if not os.path.exists(full):
             return False
-        self.sounds[name] = FakeSound(name, self.durations.get(name, 1.0))
+        self.sounds[name] = FakeSound(name, self.durations.get(name, 1.0),
+                                      self.clock)
         return True
 
     def any_sound_with_prefix(self, prefix):
@@ -120,7 +175,7 @@ LEVEL1_SOUNDS = [
 def build(stem='ps1_1', durations=None, names=None):
     bus = MessageBus()
     interp = MoveInterpretor(bus)
-    bank = FakeBank(names or LEVEL1_SOUNDS, durations)
+    bank = FakeBank(names or LEVEL1_SOUNDS, durations, clock=lambda: bus.now)
     level = Level(bus, bank).load(os.path.join(EXPORTS, f'{stem}.json'), stem)
     return bus, interp, bank, level
 
@@ -401,7 +456,7 @@ def test_on_load_fires_for_every_agent_when_the_level_is_built():
 
     bus = MessageBus()
     MoveInterpretor(bus)
-    bank = FakeBank(LEVEL1_SOUNDS)
+    bank = FakeBank(LEVEL1_SOUNDS, clock=lambda: bus.now)
     seen = []
     bus.subscribe('PGE_MESSAGE_AlertAllEnemies', lambda n, p: seen.append(p))
     lv = Level(bus, bank)
@@ -537,7 +592,7 @@ def test_every_level_builds_without_error():
         stem = os.path.splitext(os.path.basename(fp))[0]
         bus = MessageBus()
         MoveInterpretor(bus)
-        bank = FakeBank(LEVEL1_SOUNDS)
+        bank = FakeBank(LEVEL1_SOUNDS, clock=lambda: bus.now)
         lv = Level(bus, bank).load(fp, stem)
         assert lv.player is not None, stem
         assert lv.rect[2] > 0 and lv.rect[3] > 0, stem
