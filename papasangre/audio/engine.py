@@ -252,7 +252,8 @@ class Sound:
 
     __slots__ = ('engine', 'spec', 'name', 'buffer', 'source', '_gain',
                  '_looping', '_spatialized', '_planar', 'duration',
-                 '_send_to_reverb', '_wet_gain', '_channels', '_started')
+                 '_send_to_reverb', '_wet_gain', '_channels', '_started',
+                 '_send_filter')
 
     def __init__(self, engine: 'AudioEngine', spec: SoundSpec,
                  buffer_id: int, duration: float, channels: int):
@@ -270,6 +271,11 @@ class Sound:
         self._send_to_reverb = False
         self._wet_gain = 0.0
         self._started = False
+        #: The lowpass filter on this source's auxiliary send.  OpenAL has no
+        #: plain "send gain", so the only way to ask for less than all of a
+        #: sound in the reverb is to put a filter on the send and turn its
+        #: gain down.  Made once, on demand, and kept for the sound's life.
+        self._send_filter: int | None = None
 
     # -- source lifetime ------------------------------------------------
     def _ensure_source(self) -> int:
@@ -405,12 +411,55 @@ class Sound:
         self._wet_gain = float(v)
         self._apply_send()
 
+    def _ensure_send_filter(self) -> int | None:
+        """A lowpass filter to scale this source's reverb send, or None.
+
+        None means the driver would not give us one, which is possible on old
+        or minimal OpenAL implementations.  The caller then sends at full gain
+        rather than not at all: too much reverb is a poor sound, no reverb is
+        a missing one.
+        """
+        if self._send_filter is not None:
+            return self._send_filter
+        try:
+            flt = self.engine.al.gen_filters(1)[0]
+            self.engine.al.filteri(flt, OA.AL_FILTER_TYPE, OA.AL_FILTER_LOWPASS)
+        except Exception:                                    # noqa: BLE001
+            return None
+        self._send_filter = flt
+        return flt
+
     def _apply_send(self) -> None:
+        """Route this source to the reverb, **at the gain it asked for**.
+
+        The gain is the part that was missing.  ``wetGain`` was stored and then
+        thrown away here, so every sound that went to the reverb went in at
+        OpenAL's default send gain of 1.0 - the whole game at full wet, and
+        every per-sound mix the original specifies (0.05 for a collectible's
+        loop, 0.5 for a footstep, 0.75 for the shuffle) inert.  Reported as
+        ps1_2's flies easter egg drowning in room reverb: it asks for the
+        driest mix in the game, 0.05, and you walk right into it.
+
+        ``AL_LOWPASS_GAINHF`` stays at 1.0 so this only scales the level and
+        does not colour what reaches the reverb.
+        """
         if self.source is None or self.engine.reverb_slot is None:
             return
-        slot = self.engine.reverb_slot if self._send_to_reverb else 0
-        self.engine.al.alSource3i(self.source, OA.AL_AUXILIARY_SEND_FILTER,
-                                  slot, 0, OA.AL_FILTER_NULL)
+        al = self.engine.al
+        if not self._send_to_reverb:
+            al.alSource3i(self.source, OA.AL_AUXILIARY_SEND_FILTER,
+                          0, 0, OA.AL_FILTER_NULL)
+            return
+        flt = self._ensure_send_filter()
+        if flt is None:
+            al.alSource3i(self.source, OA.AL_AUXILIARY_SEND_FILTER,
+                          self.engine.reverb_slot, 0, OA.AL_FILTER_NULL)
+            return
+        al.filterf(flt, OA.AL_LOWPASS_GAIN,
+                   max(0.0, min(1.0, self._wet_gain)))
+        al.filterf(flt, OA.AL_LOWPASS_GAINHF, 1.0)
+        al.alSource3i(self.source, OA.AL_AUXILIARY_SEND_FILTER,
+                      self.engine.reverb_slot, 0, flt)
 
     # -- transport ------------------------------------------------------
     @property

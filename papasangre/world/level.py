@@ -373,8 +373,13 @@ class Level(Surface):
             self.player.trip_bpm = best.trip_bpm
         if best.run_bpm > 0:
             self.player.run_bpm = best.run_bpm
-        if best.trip_sound:
-            self.player.trip_sound = best.trip_sound
+        # Always assigned, exactly like shuffleSound below.  The original has
+        # an else arm here - ``setTripSound:@""`` at 0x1000326b8 - so stepping
+        # onto a surface that names no tripSound *clears* the player's and the
+        # trip falls back to anySoundContaining:@"trip".  Only ever setting it
+        # meant the last trip sound you crossed stuck for the rest of the
+        # level: reported as the quicksand trip playing everywhere in ps1_11.
+        self.player.trip_sound = best.trip_sound or ''
         # Always assigned, so a surface with no shuffleSound clears it and the
         # player falls back to "<footstepsPrefix>_shuffle".
         self.player.shuffle_sound = best.shuffle_sound or ''
