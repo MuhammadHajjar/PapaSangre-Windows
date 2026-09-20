@@ -39,6 +39,10 @@ def writable_root() -> str:
             base = (os.environ.get('HOME') or os.path.expanduser('~'))
             return os.path.join(base, 'Library', 'Application Support',
                                 'Papa Sangre')
+        if host.LINUX:
+            base = (os.environ.get('XDG_DATA_HOME')
+                    or os.path.join(os.path.expanduser('~'), '.local', 'share'))
+            return os.path.join(base, 'Papa Sangre')
         exe_dir = os.path.dirname(sys.executable)
         if running_from_throwaway():
             base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
@@ -112,11 +116,36 @@ def openal_dll() -> str:
             if os.path.exists(candidate):
                 return candidate
         return resource('vendor', 'openal-mac', 'libopenal.dylib')
+    if host.LINUX:
+        for candidate in (resource('libopenal.so'),
+                          resource('vendor', 'openal-linux', 'libopenal.so')):
+            if os.path.exists(candidate):
+                return candidate
+        return resource('vendor', 'openal-linux', 'libopenal.so')
     for candidate in (resource('soft_oal.dll'),
                       resource('vendor', 'openal', 'soft_oal.dll')):
         if os.path.exists(candidate):
             return candidate
     return resource('vendor', 'openal', 'soft_oal.dll')
+
+
+def espeak_bin() -> str | None:
+    """The espeak-ng binary: bundled first, then system PATH."""
+    for candidate in (resource('espeak-ng'),
+                      resource('vendor', 'espeak-linux', 'espeak-ng')):
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    import shutil
+    return shutil.which('espeak-ng') or shutil.which('espeak')
+
+
+def espeak_data_dir() -> str | None:
+    """The espeak-ng-data directory: bundled or system."""
+    for candidate in (resource('espeak-ng-data'),
+                      resource('vendor', 'espeak-linux', 'espeak-ng-data')):
+        if os.path.isdir(candidate):
+            return candidate
+    return None
 
 
 def hrtf_dir() -> str:

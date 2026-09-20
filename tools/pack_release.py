@@ -24,7 +24,9 @@ from papasangre.util import host                            # noqa: E402
 RUN = os.path.join(ROOT, 'Run')
 DIST = os.path.join(ROOT, 'dist')
 
-GAME = ('Play Papa Sangre.app' if host.MAC else 'Play Papa Sangre.exe')
+GAME = ('Play Papa Sangre.app' if host.MAC
+        else 'Play Papa Sangre.exe' if host.WINDOWS
+        else 'Play Papa Sangre')
 
 #: The release, in full.
 ALWAYS = (GAME,)
@@ -90,7 +92,8 @@ def main(argv: list[str]) -> int:
         return 1
 
     os.makedirs(DIST, exist_ok=True)
-    plat = 'macOS' if host.MAC else 'Windows' if host.WINDOWS else host.PLATFORM
+    plat = ('macOS' if host.MAC else 'Windows' if host.WINDOWS
+            else 'Linux' if host.LINUX else host.PLATFORM)
     out = os.path.join(DIST, f'PapaSangre-{plat}-{version()}.zip')
 
     def _tree(root: str):

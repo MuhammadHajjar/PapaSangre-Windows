@@ -17,6 +17,16 @@ be importable:
      beyond it being switched on.
   2. A null backend that records what would have been said (for tests).
 
+* **Linux**
+  1. speech-dispatcher (``speechd`` Python client) — the standard Linux
+     accessibility daemon; Orca uses it, so it is running on any desktop
+     that has accessibility enabled.
+  2. Bundled ``espeak-ng`` binary (``vendor/espeak-linux/espeak-ng``) with
+     bundled voice data — the fully self-contained fallback.  No apt-install
+     required: the binary and its ``espeak-ng-data/`` travel inside the
+     frozen build.
+  3. A null backend that records what would have been said (for tests).
+
 * **Windows**
   1. ``nvdaControllerClient64.dll`` — direct, no COM, lowest latency.
   2. SAPI 5 through ``win32com``/``comtypes`` — always available on Windows.
@@ -27,6 +37,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import subprocess
 import sys
 
 from ..util import host, paths
@@ -154,6 +165,77 @@ class VoiceOverSpeech(SpeechBackend):
         return self._vo.cancel()
 
 
+class SpeechdSpeech(SpeechBackend):
+    """speech-dispatcher — the standard Linux accessibility daemon."""
+    name = 'speechd'
+
+    def __init__(self) -> None:
+        import speechd                                       # noqa: PLC0415
+        self._client = speechd.Client('papasangre')
+        self._client.set_punctuation(speechd.PunctuationMode.NONE)
+        self._client.set_priority(speechd.Priority.MESSAGE)
+
+    def speak(self, text: str, interrupt: bool = False) -> bool:
+        if interrupt:
+            self._client.cancel()
+        self._client.say(text)
+        return True
+
+    def cancel(self) -> bool:
+        self._client.cancel()
+        return True
+
+    def close(self) -> None:
+        try:
+            self._client.close()
+        except Exception:                                    # noqa: BLE001
+            pass
+
+
+class EspeakSpeech(SpeechBackend):
+    """Bundled espeak-ng binary — fully self-contained Linux fallback."""
+    name = 'espeak'
+
+    def __init__(self) -> None:
+        self._bin = paths.espeak_bin()
+        if not self._bin:
+            raise OSError('espeak-ng not found')
+        self._data = paths.espeak_data_dir()
+        self._proc: subprocess.Popen | None = None          # type: ignore[type-arg]
+
+    def _env(self) -> dict:
+        env = dict(os.environ)
+        if self._data:
+            env['ESPEAK_DATA_PATH'] = self._data
+        return env
+
+    def speak(self, text: str, interrupt: bool = False) -> bool:
+        if interrupt:
+            self.cancel()
+        try:
+            self._proc = subprocess.Popen(
+                [self._bin, '-s', '160', '--', text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=self._env())
+            return True
+        except OSError:
+            return False
+
+    def cancel(self) -> bool:
+        if self._proc and self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+        self._proc = None
+        return True
+
+    def close(self) -> None:
+        self.cancel()
+
+
 def _find_nvda_dll() -> str | None:
     want = _NVDA_DLL_NAMES[0] if sys.maxsize > 2 ** 32 else _NVDA_DLL_NAMES[1]
     for d in _nvda_search_dirs():
@@ -181,6 +263,10 @@ def create(prefer: str | None = None) -> SpeechBackend:
                     return NvdaSpeech(dll)
             elif kind == 'sapi':
                 return SapiSpeech()
+            elif kind == 'speechd':
+                return SpeechdSpeech()
+            elif kind == 'espeak':
+                return EspeakSpeech()
             elif kind == 'null':
                 return NullSpeech()
         except Exception:                                    # noqa: BLE001
