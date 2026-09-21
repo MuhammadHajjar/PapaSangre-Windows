@@ -107,6 +107,9 @@ class Monster(GameAgent):
         self.spatialized = True          # every monster sound is positioned
         self._current_sound_name = ''
         self._proximity_sound = None     # the girl's scream, held so it lives
+        #: [REQUESTED] while this is in the future the enemy holds state 4
+        #: and keeps snarling.  -1 means it is not snarling.
+        self._snarl_until = -1.0
 
         for msg, handler in (
             ('PGE_MESSAGE_AlertAllEnemies', self._on_alert_all),
@@ -341,10 +344,26 @@ class Monster(GameAgent):
             # carry straight on - **no awareSound**, so the chase loop it is
             # already playing is never interrupted.  State 6 clears the latch
             # when it gives up, so the next disturbance snarls again.
-            if self.has_wanted_position:
+            #
+            # [REQUESTED 2026-09-21] **The snarl is held for the full second
+            # the enemy schedules.**  The original does not: state 4's entry in
+            # the jump table is 0x10001d288, straight onto the body with no
+            # guard, so the frame after the snarl takes the latched arm and
+            # leaves at once - about two frames of awareSound, which is not
+            # long enough to hear.  Holding it is a change, see DIVERGENCES 4c.
+            #
+            # Note what this deliberately does *not* touch: the entry
+            # bookkeeping below.  An earlier attempt made every alert a fresh
+            # entry, which reset chasingTime and re-aimed on every footstep and
+            # turned the ps1_7 hog into something you cannot get past.
+            if self.has_wanted_position and now < self._snarl_until:
+                pass                     # still snarling; re-aim when it ends
+            elif self.has_wanted_position:
+                self._snarl_until = -1.0
                 self.find_direction_to_player()
                 self.change_state_to(GO_TO_POSITION)     # at once, no delay
             else:
+                self._snarl_until = now + AGENT_ALERT_DELAY
                 self.play_sound(self.aware_sound)
                 self.bus.post_after(AGENT_ALERT_DELAY,
                                     'PGE_INTERNAL_EnemyState',

@@ -302,3 +302,72 @@ def test_an_enemy_sent_to_attack_borrows_its_chase_sound_and_keeps_coming():
     assert hog._current_sound_name == hog.chase_sound
     assert hog.sound.looping, 'playSound: is the looping one'
     assert hog.distracted_time == before, 'attacking does not start a timer'
+
+
+def test_a_noise_makes_it_snarl_for_a_full_second_before_it_comes():
+    """REQUESTED 2026-09-21: you should hear it before it moves on you.
+
+    This is the ``to=position`` path - a trip, or a floor that alerts as you
+    cross it - and it is **not** what the original does.  State 4's entry in
+    the jump table is 0x10001d288, straight onto the body with no guard, so in
+    the original the frame after the snarl takes the latched arm and leaves at
+    once: about two frames of ``awareSound``, far too short to hear.  The port
+    holds the snarl for the second that state 4 itself schedules
+    (``afterDelay:1.0`` at 0x10001da80).  See DIVERGENCES 4c.
+
+    The ``to=agent`` path - releasing ps1_23's chickens - always snarled, and
+    is untouched by this.
+    """
+    from papasangre.entities.monster import (ALERT_POSITION,       # noqa: PLC0415
+                                             GO_TO_POSITION)
+    bus, _mi, bank, lv = build()
+    t = start(bus, lv)
+    hog = lv.agent('hog1')
+    bank.played.clear()
+
+    bus.now = t
+    bus.post('PGE_MESSAGE_AlertAllEnemies',
+             {'to': 'position', 'position': lv.player.position})
+    lv.update(t)
+    assert hog.state == ALERT_POSITION
+    assert hog.sound.name == hog.aware_sound, 'the snarl comes first'
+
+    # most of a second later it is still snarling, not yet chasing
+    for _ in range(8):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert hog.state == ALERT_POSITION, 'it must not leave early'
+    assert hog.sound.name == hog.aware_sound
+
+    # and past the second it goes
+    for _ in range(5):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert hog.state == GO_TO_POSITION, hog.state_name
+    assert hog.sound.name == hog.chase_sound
+    assert [s for s in bank.played if s.startswith('monster')][:2] == \
+        [hog.aware_sound, hog.chase_sound]
+
+
+def test_a_floor_that_alerts_every_step_does_not_trap_it_snarling():
+    """The guts and the bones alert on every footstep.
+
+    An earlier attempt at holding the snarl made every alert a fresh entry,
+    which left the enemy re-entering state 4 for ever: snarling, never coming.
+    A repeated alert must not extend the snarl.
+    """
+    from papasangre.entities.monster import GO_TO_POSITION          # noqa: PLC0415
+    bus, _mi, _bank, lv = build()
+    t = start(bus, lv)
+    hog = lv.agent('hog1')
+    for i in range(24):
+        t += 0.1
+        bus.now = t
+        if i % 2 == 0:                       # a step every 0.2 s
+            bus.post('PGE_MESSAGE_AlertAllEnemies',
+                     {'to': 'position', 'position': lv.player.position})
+        lv.update(t)
+    assert hog.state != 4, 'it is stuck snarling and will never reach you'
+    assert hog.state in (GO_TO_POSITION, 6, 7), hog.state_name

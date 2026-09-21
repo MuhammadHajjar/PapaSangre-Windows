@@ -171,18 +171,48 @@ add `tripSound` to ps1_7's six surfaces (edits the original level data), or
 restore the missing `stringWithFormat:@"%@_trip"` the discarded prefix was
 plainly meant for (edits engine behaviour on every level that names none).
 
-### The one-second wind-up in state 4 is dead code
+### The one-second wind-up in state 4 is dead code — and is now overridden
 
 State 4 schedules `changeStateTo:5` with `afterDelay:1.0` (0x10001da80), which
 reads like a deliberate head start. It never elapses: the same frame latches
 `hasWantedPosition`, and on the very next frame the other branch of state 4
 changes the state immediately. The delayed call lands a second later on an
-enemy that moved on long ago. **Reproduced, dead code included** — the snarl
-gets about two frames before the roar takes over.
+enemy that moved on long ago — the snarl gets about two frames.
+
+**This reading is now proven, not inferred.** The 13-entry jump table at
+0x10001de40 decodes to one target per state, all inside `-[PGEEnemy update:]`,
+and state 4's is **0x10001d288** — straight onto the body, with no entry
+guard. Compare state 2, which does have one. So the delay really is dead in
+the original.
+
+It was reproduced faithfully until 2026-09-21, when it was overridden on
+request — see §4c.
 
 ## 4c. REQUESTED — asked for, knowing it is a change
 
 The places the port deliberately does not sound like Papa Sangre.
+
+### An enemy alerted to a noise snarls for a full second
+
+A trip, or a floor that alerts as you cross it, sends `to=position` and lands
+in state 4. The original snarls for about two frames there and then leaves,
+which is too short to hear (see §4b — the jump table proves state 4 has no
+entry guard). The port now holds state 4 until the second that state 4 itself
+scheduled has elapsed, so the snarl is audible before the chase begins.
+
+Asked for on 2026-09-21, twice: *"it should play monster_hog1_01_dry_aware
+then chase"*.
+
+What this deliberately does **not** change is state 4's entry bookkeeping. A
+first attempt made every incoming alert a fresh entry, which reset
+`chasingTime` and re-aimed the enemy on every footstep — on ps1_7's guts that
+produced a hog you cannot get past, and the level stopped being completable.
+A repeated alert therefore does not extend the snarl; it is honoured when the
+snarl ends. Two tests hold that line.
+
+Unaffected: `to=agent` (state 12, releasing ps1_23's chickens), which has its
+own entry guard and always snarled correctly, and `to=player` (state 2), whose
+snarl is a genuine recovery rather than a change.
 
 ### Walking away from a lost soul leaves them resting again
 

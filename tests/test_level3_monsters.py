@@ -311,17 +311,23 @@ def test_a_monster_alerted_to_a_place_goes_to_where_you_were():
     ``playerPosition`` (0x10001dabc, ivar 40) - "Going to last player
     position".  So a noise sends the hog to *you*, not to the noise.
 
-    State 4 also schedules ``changeStateTo:5`` with ``afterDelay:1.0``, but
-    that second never actually elapses: the same frame latches
-    ``hasWantedPosition``, and on the *next* frame the other branch of state 4
-    changes the state at once.  The delayed call lands a second later on an
-    enemy that has long since moved on.  Reproduced, dead code included.
+    State 4 also schedules ``changeStateTo:5`` with ``afterDelay:1.0``
+    (0x10001da80).  In the original that second never elapses: state 4's entry
+    in the jump table is 0x10001d288, straight onto the body with no guard, so
+    the frame after the snarl takes the latched arm and leaves at once - about
+    two frames of ``awareSound``.  **The port now holds it for the full
+    second** so the snarl can actually be heard.  That is a change, not a
+    recovery: DIVERGENCES 4c.
     """
     bus, mi, bank, lv = build()
     t = start(bus, lv)
     hog = lv.agent('hog1')
     hog.distracted_time = 1.0
-    lv.player.position = (60.0, 60.0)
+    # Far enough that the hog cannot actually reach you inside this test: it
+    # covers 30 a second and the test spends about three chasing, and the
+    # snarl it now holds adds another.  Being caught is not what this is
+    # about.
+    lv.player.position = (190.0, 187.0)
     bus.post('PGE_MESSAGE_PlayerMovedToPosition', {'position': lv.player.position})
 
     bus.now = t
@@ -330,16 +336,21 @@ def test_a_monster_alerted_to_a_place_goes_to_where_you_were():
              {'to': 'position', 'position': (-300.0, -300.0)})
     lv.update(t)
     assert hog.state == ALERT_POSITION, hog.state_name
-    assert hog.wanted_position == (60.0, 60.0),         f'it should head for the player, not the noise: {hog.wanted_position}'
+    assert hog.wanted_position == (190.0, 187.0),         f'it should head for the player, not the noise: {hog.wanted_position}'
     assert hog.sound.name == 'monster_hog1_01_dry_aware'
 
     assert hog.has_wanted_position, 'the latch goes up on the first frame'
 
-    # and the next frame takes the other branch of state 4, straight into the
-    # chase - it does not wait out the second it just scheduled
+    # and it holds the snarl for the second it scheduled [REQUESTED]
     t += 1.0 / 60.0
     bus.now = t
     lv.update(t)
+    assert hog.state == ALERT_POSITION, hog.state_name
+    assert hog.sound.name == 'monster_hog1_01_dry_aware', 'the snarl holds'
+    while hog.state == ALERT_POSITION:
+        t += 1.0 / 60.0
+        bus.now = t
+        lv.update(t)
     assert hog.state == GO_TO_POSITION, hog.state_name
 
     # from here on it is chasing, and further noises must not re-snarl at it
