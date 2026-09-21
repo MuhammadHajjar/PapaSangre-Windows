@@ -188,7 +188,7 @@ def test_the_intro_sets_the_reaper_on_you():
     assert not r.active and r.state == IDLE
     t = start(bus, lv)
     assert r.active
-    for _ in range(4):
+    for _ in range(16):          # past the one second roar before the charge
         t += 0.1
         bus.now = t
         lv.update(t)
@@ -202,7 +202,7 @@ def test_the_reaper_never_gives_up_and_never_changes_its_note():
     bus, mi, bank, lv = build()
     t = start(bus, lv)
     r = lv.agent('reaper1')
-    for _ in range(4):
+    for _ in range(16):          # past the one second roar before the charge
         t += 0.1
         bus.now = t
         lv.update(t)

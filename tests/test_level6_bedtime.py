@@ -171,6 +171,10 @@ def test_stepping_on_the_bones_sets_both_hogs_chasing_you():
 
     t, _ = walk_to(bus, mi, lv, ONTO_THE_BONES, t)
     assert lv.player.footsteps_prefix == 'foot_bone', 'you are on the bones'
+    for _ in range(16):          # past the one second roar before the charge
+        t += 0.1
+        bus.now = t
+        lv.update(t)
     assert h1.state == CHASE_PLAYER, f'hog1 is {h1.state_name}'
     assert h2.state == CHASE_PLAYER, f'hog2 is {h2.state_name}'
     assert h1.speed == h1.chase_speed, 'and running at its chase speed'

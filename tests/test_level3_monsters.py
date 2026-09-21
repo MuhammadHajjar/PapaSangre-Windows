@@ -15,7 +15,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'tests'))
 
 from papasangre.core.messages import MessageBus                   # noqa: E402
-from papasangre.entities.monster import (ALERT_POSITION,          # noqa: E402
+from papasangre.entities.monster import (ALERT_PLAYER,            # noqa: E402
+                                         ALERT_POSITION,
                                          AT_POSITION, ATTACK,
                                          CHASE_PLAYER, GO_TO_POSITION,
                                          IDLE, RETURNING, Monster)
@@ -183,6 +184,14 @@ def test_an_alert_makes_a_monster_chase_the_player():
     bus.now = t
     bus.post('PGE_MESSAGE_AlertAllEnemies', {'to': 'player'})
     lv.update(t)
+    # It roars first and charges a second later: state 2 plays the aware
+    # sound and schedules the change to state 3 with a 1 s delay.
+    assert hog.state == ALERT_PLAYER, hog.state_name
+    assert hog.sound.name == hog.aware_sound, 'heard before it moves'
+    for _ in range(12):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
     assert hog.state == CHASE_PLAYER
 
     before = math.dist(hog.position, lv.player.position)
@@ -204,11 +213,14 @@ def test_a_chasing_monster_ignores_further_player_alerts():
     bus.now = t
     bus.post('PGE_MESSAGE_AlertAllEnemies', {'to': 'player'})
     lv.update(t)
-    # the chase entry work runs on the following frame, guarded by
-    # state_at_previous_frame, so let it happen before planting the marker
-    t += 0.1
-    bus.now = t
-    lv.update(t)
+    # the roar runs for a second before the charge, and the chase entry
+    # work happens on the frame after that, so let all of it land before
+    # planting the marker
+    for _ in range(12):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert hog.state == CHASE_PLAYER, hog.state_name
     hog.position_before_chasing = (999.0, 999.0)     # reset only on re-entry
 
     t += 0.1
@@ -230,6 +242,11 @@ def test_alert_by_name_only_reaches_that_monster():
     assert hog.state == IDLE
     bus.post('PGE_MESSAGE_AlertEnemyWithName', {'name': 'hog1', 'to': 'player'})
     lv.update(t)
+    assert hog.state == ALERT_PLAYER, 'it hears you and roars'
+    for _ in range(12):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
     assert hog.state == CHASE_PLAYER
 
 
@@ -248,6 +265,11 @@ def test_alert_within_radius_only_reaches_monsters_that_are_close():
     bus.post('PGE_MESSAGE_AlertEnemiesWithinRadius',
              {'radius': str(far * 2), 'to': 'player'})
     lv.update(t)
+    assert hog.state == ALERT_PLAYER, 'it hears you and roars'
+    for _ in range(12):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
     assert hog.state == CHASE_PLAYER
 
 
@@ -404,13 +426,22 @@ def test_a_chase_records_where_the_enemy_was_standing():
     bus, mi, bank, lv = build()
     t = start(bus, lv)
     hog = lv.agent('hog1')
-    where = hog.position
     bus.now = t
     bus.post('PGE_MESSAGE_AlertAllEnemies', {'to': 'player'})
     lv.update(t)
-    t += 0.1
-    bus.now = t
-    lv.update(t)
+    # It is already running at chaseSpeed through the one second roar - state 2
+    # sets the speed (0x10001d9a0) and never steers - so it lunges along
+    # whatever vector it was facing and only turns towards you when state 3
+    # takes over.  Home is therefore where it stood as the charge began.
+    where = hog.position
+    for _ in range(12):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+        if hog.state == CHASE_PLAYER:
+            break
+        where = hog.position
+    assert hog.state == CHASE_PLAYER, hog.state_name
     assert hog.position_before_chasing == where
 
 
@@ -636,3 +667,49 @@ if __name__ == '__main__':
             print(f'  FAIL  {fn.__name__}: {e}')
     print(f'\n{len(fns) - failed}/{len(fns)} passed')
     raise SystemExit(1 if failed else 0)
+
+
+def test_a_monster_roars_before_it_charges_you():
+    """You hear it a second before it comes, which is how the game plays.
+
+    ``-[PGEEnemy update:]`` state 2 is four things, and the port had none of
+    them: an entry guard on the previous frame's state (0x10001d94c), the
+    aware sound (0x10001d974), the wind-up to ``chaseSpeed`` (0x10001d9a0),
+    and ``changeStateTo:3`` scheduled a **whole second** later through
+    performSelector:withObject:afterDelay: at 0x10001d9dc.  It changed
+    straight to state 3 instead, so on this path the aware sound never played
+    at all and the thing simply arrived - reported as "when you trip and a
+    monster starts to chase you, its start sound doesn't play, it just runs
+    at you. This is not how the 2010 version did it".
+    """
+    bus, _mi, bank, lv = build()
+    t = start(bus, lv)
+    hog = lv.agent('hog1')
+    assert hog.state == IDLE
+    bank.played.clear()
+
+    bus.now = t
+    bus.post('PGE_MESSAGE_AlertAllEnemies', {'to': 'player'})
+    lv.update(t)
+    assert hog.state == ALERT_PLAYER, hog.state_name
+    assert hog.sound.name == hog.aware_sound, 'the roar comes first'
+    assert hog.speed == hog.chase_speed, 'and it is already winding up'
+
+    # still roaring most of a second later
+    for _ in range(8):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert hog.state == ALERT_PLAYER, 'the charge must not start early'
+    assert hog.sound.name == hog.aware_sound
+
+    # and past a second it is coming for you
+    for _ in range(5):
+        t += 0.1
+        bus.now = t
+        lv.update(t)
+    assert hog.state == CHASE_PLAYER, hog.state_name
+    assert hog.sound.name == hog.chase_sound
+
+    order = [s for s in bank.played if s.startswith('monster')]
+    assert order[:2] == [hog.aware_sound, hog.chase_sound], order

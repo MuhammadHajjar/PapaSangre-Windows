@@ -294,7 +294,30 @@ class Monster(GameAgent):
                 self.play_sound(self.default_sound)
 
         elif state == ALERT_PLAYER:
-            self.change_state_to(CHASE_PLAYER)
+            # **The roar before the charge.**  0x10001d94c is an entry guard on
+            # the previous frame's state, and what follows it is why you hear a
+            # monster a moment before it reaches you: the aware sound
+            # (0x10001d974), the wind-up to chaseSpeed (0x10001d9a0), and then
+            # ``changeStateTo:3`` scheduled **one second later** through
+            # performSelector:withObject:afterDelay: at 0x10001d9dc.  The
+            # enemy is already moving at chase speed during that second, along
+            # whatever vector it was facing - state 2 never steers, so the
+            # turn towards you only begins when state 3 takes over.
+            #
+            # The port used to change straight to state 3, so the aware sound
+            # was never played on this path at all and the thing simply
+            # arrived: reported as "when you trip and a monster starts to
+            # chase you, its start sound doesn't play, it just runs at you".
+            if entering:
+                self.play_sound(self.aware_sound)
+                self.speed = self.chase_speed or self.speed
+                self.bus.post_after(AGENT_ALERT_DELAY,
+                                    'PGE_INTERNAL_EnemyState',
+                                    {'name': self.name, 'state': CHASE_PLAYER},
+                                    token=(id(self), 'alert'))
+                # 0x10001da04 and 0x10001da10.
+                self.should_attack_on_wanted_position = False
+                self.chasing_time = 0.0
 
         elif state == CHASE_PLAYER:
             if entering:

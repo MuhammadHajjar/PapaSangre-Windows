@@ -194,7 +194,7 @@ def test_carrying_the_baby_wakes_the_hog_and_is_remembered():
     assert baby.sound.name == 'dilemma_baby_collect'
     # OnCollide is enqueued, so the alert lands on the following frame and the
     # chase entry work on the one after that
-    for _ in range(3):
+    for _ in range(16):          # past the one second roar before the charge
         t += 0.1
         bus.now = t
         lv.update(t)

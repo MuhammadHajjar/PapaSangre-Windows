@@ -113,6 +113,45 @@ closing so a failure is never a window that flashes past.
 
 ## Progress log
 
+### 2026-09-21 - the roar before the charge
+
+Reported twice and dismissed once by me, which is the part worth recording.
+
+A player wrote that a monster starting a chase does not play its opening
+sound, "it just runs at you. This is not how the 2010 version did it". I
+tested the case I assumed he meant - an idle hog, a trip nearby - watched
+`monster_hog1_01_dry_aware` play correctly, and filed it as the player's
+memory against the binary, to be asked about rather than changed.
+
+That was the wrong case. A trip sends `AlertAllEnemies:to=position`, which is
+state 4, and state 4 does roar. Being alerted **to the player** is state 2,
+and state 2 in the port was one line: change to state 3. The way to find it
+was to stop reasoning about which state I thought was involved and count the
+reads of `awareSound` in the binary instead. There are three - 0x10001d6c8,
+0x10001d958 and 0x10001da1c - and the port only played it in two places.
+
+The missing one is state 2, and it is four things:
+
+* an entry guard on the previous frame's state, 0x10001d94c;
+* `awareSound` through `playSound:`, 0x10001d974;
+* `chaseSpeed` into `setSpeed:`, 0x10001d9a0;
+* `changeStateTo:3` through `performSelector:withObject:afterDelay:` with a
+  delay of **1.0**, 0x10001d9dc.
+
+So the enemy roars for a second at full chase speed before the charge proper
+begins, and because state 2 never steers, it spends that second running along
+whatever vector it was already facing. It only turns towards you when state 3
+takes over. That last detail moved a test: `positionBeforeChasing` is where
+the enemy stood when the charge began, not where it was standing when it first
+heard you, because it has already been moving for a second by then.
+
+Nine tests broke on this change and every one of them had encoded the fault -
+they alerted an enemy and asserted it was chasing on the same frame. They now
+assert the roar, let the second elapse, and then assert the chase, which is
+what a player actually experiences.
+
+---
+
 ### 2026-09-14 - what players found, and the hog that deleted itself
 
 Two people played the whole game and reported. Six things between them; four

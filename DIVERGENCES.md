@@ -33,6 +33,7 @@ Nothing currently outstanding.
 | what | where | status |
 |---|---|---|
 | Foot alternation (`updateFeetView:` holds the used foot `"off"` for 2 s) | every level | **fixed** 2026-09-08 |
+| State 2, `ALERT_PLAYER`, was a single jump to state 3. The original plays `awareSound` (0x10001d974), sets `chaseSpeed` (0x10001d9a0) and only schedules `changeStateTo:3` **one second later** (0x10001d9dc) — so an enemy roars, lunges along the vector it was already facing, and begins steering towards you a second afterwards. On this path the aware sound never played at all | every level with an enemy | **fixed** 2026-09-21 |
 | `playSound:looping:` returns the sound's duration and state 6 feeds it to `setDistractedTime:` (0x10001dc20) — the port kept the level's own `distractedTime`, so an enemy that lost you stood there silent for the balance of it (10 s by default, 90 s in ps1_15) instead of giving up as its grunt ended | every level with an enemy | **fixed** 2026-09-14 |
 | The little girl's scream: `dilemma_girl_monsterprox`, **hardcoded in `alertEnemy:`** at 0x10001e274 and named in no level's data, played once per approach off the `withinRadius` edge | ps1_18 | **fixed** 2026-09-14 |
 | An enemy in state 6 with no `attackSound` borrows its `chaseSound` and keeps it (`setAttackSound:`, 0x10001d518), playing it looping | ps1_23 | **fixed** 2026-09-14 |

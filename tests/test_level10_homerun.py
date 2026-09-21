@@ -184,7 +184,7 @@ def test_the_intro_sets_both_of_them_on_you():
     r1, r2 = lv.agent('reaper1'), lv.agent('reaper2')
     assert r1.state == IDLE and r2.state == IDLE
     t = start(bus, lv)
-    for _ in range(4):
+    for _ in range(16):          # past the one second roar before the charge
         t += 0.1
         bus.now = t
         lv.update(t)
