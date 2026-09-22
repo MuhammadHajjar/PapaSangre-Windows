@@ -112,6 +112,9 @@ def test_makemhr_points_at_the_platform_binary():
         assert os.path.exists(be.makemhr_binary())
     elif sys.platform == 'win32':
         assert be.makemhr_binary().endswith('makemhr.exe')
+    elif sys.platform.startswith('linux'):
+        import shutil
+        assert be.makemhr_binary() == shutil.which('makemhr')
 
 
 if __name__ == '__main__':

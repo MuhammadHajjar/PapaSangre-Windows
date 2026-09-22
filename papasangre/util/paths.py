@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from ctypes.util import find_library
 
 FROZEN = getattr(sys, 'frozen', False)
 
@@ -102,9 +103,24 @@ def openal_dll() -> str:
     frozen root first (PyInstaller's ``--add-binary`` puts it there), then the
     source-tree vendor directory.  The Mac carries the same OpenAL Soft built
     as ``libopenal.dylib`` in ``vendor/openal-mac``, with the same order of
-    preference.
+    preference.  Linux uses the system library, with a bundled
+    ``libopenal.so.1`` first for frozen builds that carry one.
     """
     from . import host                                       # noqa: PLC0415
+    if host.LINUX:
+        for candidate in (resource('libopenal.so.1'),
+                          resource('vendor', 'openal', 'libopenal.so.1')):
+            if os.path.exists(candidate):
+                return candidate
+        system_library = find_library('openal')
+        if system_library:
+            if os.path.exists(system_library):
+                return system_library
+            versioned = f'{system_library}.1'
+            if os.path.exists(versioned):
+                return versioned
+            return system_library
+        return resource('vendor', 'openal', 'libopenal.so.1')
     if host.MAC:
         for candidate in (resource('libopenal.dylib'),
                           resource('vendor', 'openal-mac',

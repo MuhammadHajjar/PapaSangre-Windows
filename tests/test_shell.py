@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import tempfile
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -429,8 +430,10 @@ def test_the_players_own_settings_do_live_next_to_the_game():
 def test_output_survives_having_no_console():
     """The game is built windowed, so sys.stdout is None."""
     import sys as _sys                                             # noqa: PLC0415
+    from papasangre.accessibility.speech import NullSpeech        # noqa: PLC0415
     from papasangre.util import console                            # noqa: PLC0415
-    rep = console.Reporter(speak_all=False)
+    with patch.object(console.speech_mod, 'create', return_value=NullSpeech()):
+        rep = console.Reporter(speak_all=False)
     real = _sys.stdout
     _sys.stdout = None
     try:

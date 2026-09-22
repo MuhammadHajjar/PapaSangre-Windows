@@ -21,10 +21,16 @@ be importable:
   1. ``nvdaControllerClient64.dll`` — direct, no COM, lowest latency.
   2. SAPI 5 through ``win32com``/``comtypes`` — always available on Windows.
   3. A null backend that records what would have been said (for tests).
+
+* **Linux**
+  1. Speech Dispatcher through the system's ``speechd`` Python client.
+     A missing client or service is an error; silent menus are unusable.
+  2. A null backend only when explicitly requested for tests.
 """
 
 from __future__ import annotations
 
+import atexit
 import ctypes
 import os
 import sys
@@ -79,6 +85,65 @@ class NullSpeech(SpeechBackend):
 
     def cancel(self) -> bool:
         return True
+
+
+class SpeechDispatcherSpeech(SpeechBackend):
+    """Speech Dispatcher, the common Linux screen-reader speech service."""
+
+    name = 'speechd'
+
+    def __init__(self) -> None:
+        self._client = None
+        self._connect()
+        atexit.register(self.close)
+
+    def _connect(self) -> None:
+        if self._client is not None:
+            return
+        client = None
+        try:
+            import speechd                                        # noqa: PLC0415
+            client = speechd.Client()
+            client.set_priority(speechd.client.Priority.MESSAGE)
+        except Exception as exc:                                  # noqa: BLE001
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:                                 # noqa: BLE001
+                    pass
+            raise RuntimeError('Speech Dispatcher is unavailable. Install its '
+                               'system Python binding and start the service.') from exc
+        self._client = client
+
+    def speak(self, text: str, interrupt: bool = False) -> bool:
+        self._connect()
+        try:
+            if interrupt:
+                self._client.stop()
+            self._client.speak(text)
+            return True
+        except Exception as exc:                                  # noqa: BLE001
+            self.close()
+            raise RuntimeError('Speech Dispatcher stopped responding.') from exc
+
+    def cancel(self) -> bool:
+        if self._client is None:
+            return False
+        try:
+            self._client.stop()
+            return True
+        except Exception:                                         # noqa: BLE001
+            self.close()
+            return False
+
+    def close(self) -> None:
+        if self._client is None:
+            return
+        try:
+            self._client.close()
+        except Exception:                                         # noqa: BLE001
+            pass
+        self._client = None
 
 
 class NvdaSpeech(SpeechBackend):
@@ -166,9 +231,10 @@ def _find_nvda_dll() -> str | None:
 def create(prefer: str | None = None) -> SpeechBackend:
     """Pick the best available backend for this platform.
 
-    ``prefer`` forces one: 'voiceover', 'nvda', 'sapi' or 'null'.  The default
-    order is the platform's (``host.speech_backend_order()``): VoiceOver on
-    the Mac, NVDA then SAPI on Windows.
+    ``prefer`` forces one: 'voiceover', 'nvda', 'sapi', 'speechd' or 'null'.
+    The default order is the platform's (``host.speech_backend_order``):
+    VoiceOver on the Mac, Speech Dispatcher on Linux, NVDA then SAPI on
+    Windows.
     """
     order = [prefer] if prefer else host.speech_backend_order()
     for kind in order:
@@ -181,8 +247,12 @@ def create(prefer: str | None = None) -> SpeechBackend:
                     return NvdaSpeech(dll)
             elif kind == 'sapi':
                 return SapiSpeech()
+            elif kind == 'speechd':
+                return SpeechDispatcherSpeech()
             elif kind == 'null':
                 return NullSpeech()
         except Exception:                                    # noqa: BLE001
+            if kind == 'speechd' and host.LINUX:
+                raise
             continue
     return NullSpeech()

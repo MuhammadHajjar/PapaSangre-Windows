@@ -1,7 +1,7 @@
 """Which platform the port is running on, decided once.
 
-The port was Windows-only, and every Windows-specific choice — the OpenAL
-DLL, the NVDA controller client, SAPI, ``winreg``, ``ctypes.windll``, the
+The port began Windows-only, and every platform-specific choice — the OpenAL
+library, the NVDA controller client, SAPI, ``winreg``, ``ctypes.windll``, the
 PyInstaller ``;`` separator, the ``.exe``/``.app`` shapes — now sits behind
 this module, so gameplay code never branches on ``sys.platform`` itself.  A
 new platform means touching this file and whatever it names, not the engine.
@@ -33,13 +33,12 @@ WINDOWS = sys.platform == 'win32'
 MAC = sys.platform == 'darwin'
 LINUX = sys.platform.startswith('linux')
 
-#: The one name the rest of the port tests against.  'windows' | 'mac' | 'other'
-PLATFORM = ('mac' if MAC else 'windows' if WINDOWS else 'other')
+#: The one name the rest of the port tests against.
+PLATFORM = ('mac' if MAC else 'windows' if WINDOWS else
+            'linux' if LINUX else 'other')
 
 if PLATFORM == 'other':                                    # pragma: no cover
-    import warnings
-    warnings.warn(f'papasangre has not been ported to {sys.platform!r}; '
-                  'some features will quietly do nothing.', stacklevel=2)
+    raise RuntimeError(f'papasangre has not been ported to {sys.platform!r}')
 
 IS_FROZEN = getattr(sys, 'frozen', False)
 #: True when a frozen mac build is running inside a .app bundle layout
@@ -52,20 +51,23 @@ if MAC and IS_FROZEN:
     IS_MAC_APP_BUNDLE = (os.path.basename(meipass) in ('MacOS', 'Frameworks')
                          or os.path.basename(exe_dir) == 'MacOS')
 
-#: Architecture tag for Mac file names; '' on Windows, whose names stay
-#: exactly as they have always been.
+#: Architecture tag for Mac file names; '' where file names do not vary.
 _arch = platform.machine() or ''
-ARCH_TAG = '' if WINDOWS else ('arm64' if _arch == 'arm64' else
-                               'x86_64' if _arch == 'x86_64' else 'mac')
+ARCH_TAG = ('arm64' if _arch == 'arm64' else
+            'x86_64' if _arch == 'x86_64' else 'mac') if MAC else ''
 
 
 def quit_hint() -> str:
-    """How you leave the game, which no in-game key does on either platform."""
-    return 'Alt+F4' if WINDOWS else 'Cmd+Q'
+    """How you leave the game, which no in-game key does."""
+    if MAC:
+        return 'Cmd+Q'
+    if WINDOWS or LINUX:
+        return 'Alt+F4'
+    return 'window close'
 
 
 #: How the port names itself in banners and reports.
-PORT_NAME = 'Mac' if MAC else 'Windows' if WINDOWS else PLATFORM.capitalize()
+PORT_NAME = PLATFORM.capitalize()
 
 
 def mono_audio_setting() -> bool | None:
@@ -106,4 +108,8 @@ def mono_audio_setting() -> bool | None:
 
 def speech_backend_order() -> list[str]:
     """Which screen-reader backends to try, best first."""
-    return ['voiceover', 'null'] if MAC else ['nvda', 'sapi', 'null']
+    if MAC:
+        return ['voiceover', 'null']
+    if LINUX:
+        return ['speechd']
+    return ['nvda', 'sapi', 'null']
