@@ -17,7 +17,7 @@ Windows                            Mac
 SAPI 5 fallback                    (VoiceOver is always present on macOS)
 ``AccessibilityMonoMixState``      ``com.apple.universalaccess
 (winreg mono check)                monoAudioEnabled``, via ``defaults``
-``Play Papa Sangre.exe``           ``Play Papa Sangre.app`` bundle
+``Play Papa Sangre.exe``           ``Papa Sangre.app`` bundle
 ``Start at level N.cmd``           ``Start at level N.command``
 ``;`` in ``--add-data``            ``:`` in ``--add-data``
 ``alt+F4``                         ``Cmd+Q``

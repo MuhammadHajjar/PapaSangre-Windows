@@ -10,7 +10,7 @@ runs on**:
 Windows            ``Play Papa Sangre.exe`` — a one-file       ``soft_oal.dll``
                    PyInstaller build, exactly as it has        ``NVDA client``
                    always been.                                ``.mhr``
-Mac                ``Play Papa Sangre.app`` — a one-file       ``libopenal.dylib``
+Mac                ``Papa Sangre.app`` — a one-dir             ``libopenal.dylib``
                    PyInstaller ``--windowed`` bundle: the      ``.mhr`` only —
                    whole game in one bundle, no runtime,       speech is VoiceOver,
                    no installs, launched like any other        part of macOS.
@@ -49,7 +49,7 @@ HRTF = os.path.join(HRTF_DIR, 'papa_ircam_1050.mhr')
 SEP = ';' if host.WINDOWS else ':'
 
 #: The game, as the player receives it on each platform.
-GAME_NAME = 'Play Papa Sangre'
+GAME_NAME = 'Papa Sangre' if host.MAC else 'Play Papa Sangre'
 
 #: The Mac bundle's reverse-DNS identity.  PyInstaller's default is just the
 #: app name, which is not a sane identifier (and a space, at that): this is
@@ -185,7 +185,7 @@ TARGETS: dict[str, tuple[str, str, list[tuple[str, str]]]] = {
     ),
 }
 
-#: Levels carried by the full "Play Papa Sangre" build, in play order.
+#: Levels carried by the full game build, in play order.
 ALL_LEVELS = (['ps1_1', 'ps1_1b'] + [f'ps1_{i}' for i in range(2, 26)]
               + ['reckoner'])
 
@@ -306,7 +306,7 @@ def _finalize_mac_app(bundle: str) -> None:
     the inner executable without the executable bit, and a bundle whose binary
     is not named like its CFBundleExecutable will not open from Finder.  A
     bare-named launcher beside the real binary keeps
-    ``open "Run/Play Papa Sangre.app" --args ps1_15`` working from the command
+    ``open "Run/Papa Sangre.app" --args ps1_15`` working from the command
     line too.
 
     Also stamps the identity a real bundle should carry: a reverse-DNS
@@ -415,6 +415,8 @@ def build(key: str) -> str:
     if host.MAC and windowed:
         out = os.path.join(RUN, exe_name + '.app')
         _finalize_mac_app(out)
+        # Updating Info.plist invalidates PyInstaller's ad hoc bundle signature.
+        subprocess.run(['codesign', '--force', '--sign', '-', out], check=True)
     elif host.WINDOWS:
         out = os.path.join(RUN, exe_name + '.exe')
     else:

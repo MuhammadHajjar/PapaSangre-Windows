@@ -21,7 +21,7 @@ build, there is nothing else to find.
     python tools/build_exes.py        all apps, for the platform you are on
 
 That is the whole Mac story and the whole Windows story.  Each platform gets
-its own game object: `Play Papa Sangre.exe` on Windows, `Play Papa Sangre.app`
+its own game object: `Play Papa Sangre.exe` on Windows, `Papa Sangre.app`
 on the Mac. Both carry their own OpenAL Soft
 (``vendor/openal/soft_oal.dll`` vs ``vendor/openal-mac/libopenal.dylib``),
 the recovered `.mhr` HRTF, and - Windows only - the NVDA controller client.
