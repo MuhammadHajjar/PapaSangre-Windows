@@ -1,0 +1,26 @@
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.lock text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.plist text eol=lf
+*.sexp text eol=lf
+*.def text eol=lf
+*.cmd text eol=lf
+*.command text eol=lf
+*.bat text eol=crlf
+*.dll binary
+*.exe binary
+*.dylib binary
+*.so binary
+*.mhr binary
+*.m4a binary
+*.wav binary
+*.dat binary

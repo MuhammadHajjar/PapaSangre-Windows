@@ -10,11 +10,16 @@ runs on**:
 Windows            ``Play Papa Sangre.exe`` — a one-file       ``soft_oal.dll``
                    PyInstaller build, exactly as it has        ``NVDA client``
                    always been.                                ``.mhr``
-Mac                ``Play Papa Sangre.app`` — a one-file       ``libopenal.dylib``
+Mac                ``Play Papa Sangre.app`` — a one-dir        ``libopenal.dylib``
                    PyInstaller ``--windowed`` bundle: the      ``.mhr`` only —
                    whole game in one bundle, no runtime,       speech is VoiceOver,
                    no installs, launched like any other        part of macOS.
                    Mac app.
+Linux              ``Play Papa Sangre/`` — a one-dir           ``libopenal.so``
+                   PyInstaller build with a launcher           ``espeak-ng`` binary
+                   script.  Speech goes through                ``espeak-ng-data/``
+                   speech-dispatcher if running, else          ``.mhr``
+                   the bundled espeak-ng.
 =================  ==========================================  =================
 
 The diagnostic tools stay console programs on both platforms — on the Mac a
@@ -70,6 +75,8 @@ def openal_library() -> str:
     """The OpenAL Soft library for this platform, from vendor/."""
     if host.MAC:
         p = os.path.join(ROOT, 'vendor', 'openal-mac', 'libopenal.dylib')
+    elif host.LINUX:
+        p = os.path.join(ROOT, 'vendor', 'openal-linux', 'libopenal.so')
     else:
         p = os.path.join(ROOT, 'vendor', 'openal', 'soft_oal.dll')
     if not os.path.exists(p):
@@ -77,6 +84,8 @@ def openal_library() -> str:
             f'missing OpenAL Soft: {p}\n'
             f'Mac: build it with tools/build_openal_mac.sh and place the '
             'result at vendor/openal-mac/libopenal.dylib.\n'
+            f'Linux: build it with tools/build_linux_vendors.sh and place the '
+            'result at vendor/openal-linux/libopenal.so.\n'
             f'Windows: it ships as vendor/openal/soft_oal.dll, see README.md.')
     return p
 
@@ -86,9 +95,11 @@ NVDA_DIR = os.path.join(ROOT, 'vendor', 'nvda')
 
 
 def makemhr_binary() -> str | None:
-    """The platform's makemhr: ``makemhr.exe`` on Windows, the Mac build there."""
+    """The platform's makemhr binary, from vendor/."""
     if host.MAC:
         p = os.path.join(ROOT, 'vendor', 'makemhr-mac', 'makemhr')
+    elif host.LINUX:
+        p = os.path.join(ROOT, 'vendor', 'makemhr-linux', 'makemhr')
     else:
         p = os.path.join(ROOT, 'vendor', 'makemhr', 'makemhr.exe')
     return p if os.path.exists(p) else None
@@ -122,7 +133,8 @@ def prepare_hrtf() -> str:
             f'missing makemhr: {makemhr_binary() or "?"}\n'
             f'Windows: it ships in the openal-soft binary zip, see README.md.\n'
             f'Mac: build it with tools/build_openal_mac.sh, or copy the '
-            'arm64 makemhr into vendor/makemhr-mac/')
+            'arm64 makemhr into vendor/makemhr-mac/\n'
+            f'Linux: build it with tools/build_linux_vendors.sh.')
     subprocess.run([makemhr,
                     '-i', os.path.join(HRTF_DIR, 'papa_ircam_1050.def'),
                     '-o', HRTF],
@@ -355,13 +367,24 @@ def build(key: str) -> str:
     # Speech travels with the Windows build: the NVDA controller client is a
     # DLL that must sit beside the game.  On the Mac speech is VoiceOver, part
     # of the operating system, so there is nothing to carry — the pyobjc
-    # bridge is inside the frozen Python itself.
+    # bridge is inside the frozen Python itself.  On Linux, espeak-ng and its
+    # voice data are bundled so the game needs no apt-install.
     if host.WINDOWS:
         for name in ('nvdaControllerClient64.dll',
                      'nvdaControllerClient32.dll'):
             p = os.path.join(NVDA_DIR, name)
             if os.path.exists(p):
                 data.append((p, 'nvda'))
+    if host.LINUX:
+        espeak_bin = os.path.join(ROOT, 'vendor', 'espeak-linux', 'espeak-ng')
+        espeak_so = os.path.join(ROOT, 'vendor', 'espeak-linux', 'libespeak-ng.so.1')
+        espeak_data = os.path.join(ROOT, 'vendor', 'espeak-linux', 'espeak-ng-data')
+        if os.path.exists(espeak_bin):
+            data.append((espeak_bin, '.'))
+        if os.path.exists(espeak_so):
+            data.append((espeak_so, '.'))
+        if os.path.isdir(espeak_data):
+            data.append((espeak_data, 'espeak-ng-data'))
     for src, dest in extra:
         if not os.path.exists(src):
             raise SystemExit(f'missing bundled audio: {src}')
@@ -376,13 +399,12 @@ def build(key: str) -> str:
     console_flag = '--windowed' if windowed else '--console'
     # The one-file bootloader unpacks its payload to a temp dir on every
     # launch, and the game's payload is ~100 MB across six hundred small audio
-    # files: that cost seconds on Windows and tens of seconds on the Mac.  The
-    # game is therefore a one-dir app on the Mac (files read in place, the
-    # bundle stays double-clickable) and stays one-file on Windows, where the
-    # old behaviour is proven and the cost is tolerable.  The diagnostics stay
-    # one-file everywhere: they are small, and their single-file shape is what
-    # makes them drop-in tools.
-    mode = '--onedir' if (host.MAC and windowed) else '--onefile'
+    # files: that cost seconds on Windows and tens of seconds on Mac/Linux.
+    # The game is therefore a one-dir build on Mac and Linux (files read in
+    # place) and stays one-file on Windows, where the old behaviour is proven
+    # and the cost is tolerable.  The diagnostics stay one-file everywhere:
+    # they are small, and their single-file shape is what makes them drop-in.
+    mode = '--onedir' if ((host.MAC or host.LINUX) and windowed) else '--onefile'
     cmd = [
         sys.executable, '-m', 'PyInstaller',
         '--noconfirm', '--clean', mode, console_flag,
@@ -404,6 +426,7 @@ def build(key: str) -> str:
     cmd.append(script_path)
 
     kind = '.app' if (host.MAC and windowed) else '.exe' if host.WINDOWS else ''
+    # Linux one-dir game lands as a directory; the exe inside has no extension.
     print(f'\n=== building {exe_name}{kind} ===', flush=True)
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)

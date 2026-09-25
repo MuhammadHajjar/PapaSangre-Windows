@@ -22,6 +22,22 @@ SAPI 5 fallback                    (VoiceOver is always present on macOS)
 ``;`` in ``--add-data``            ``:`` in ``--add-data``
 ``alt+F4``                         ``Cmd+Q``
 =================================  ==========================================
+
+Linux equivalents:
+
+=================================  ==========================================
+Windows                            Linux
+=================================  ==========================================
+``soft_oal.dll``                   ``libopenal.so`` (same OpenAL Soft,
+                                   built and committed in vendor/openal-linux)
+``nvdaControllerClient64.dll``     speech-dispatcher (``speechd`` Python
+                                   client), falling back to bundled espeak-ng
+SAPI 5 fallback                    bundled espeak-ng binary + voice data
+``Play Papa Sangre.exe``           ``Play Papa Sangre`` (one-dir, executable)
+``%LOCALAPPDATA%\\Papa Sangre``    ``~/.local/share/Papa Sangre`` (XDG)
+``;`` in ``--add-data``            ``:`` in ``--add-data``
+``Alt+F4``                         ``Alt+F4``
+=================================  ==========================================
 """
 
 from __future__ import annotations
@@ -33,8 +49,8 @@ WINDOWS = sys.platform == 'win32'
 MAC = sys.platform == 'darwin'
 LINUX = sys.platform.startswith('linux')
 
-#: The one name the rest of the port tests against.  'windows' | 'mac' | 'other'
-PLATFORM = ('mac' if MAC else 'windows' if WINDOWS else 'other')
+#: The one name the rest of the port tests against.  'windows' | 'mac' | 'linux' | 'other'
+PLATFORM = ('mac' if MAC else 'windows' if WINDOWS else 'linux' if LINUX else 'other')
 
 if PLATFORM == 'other':                                    # pragma: no cover
     import warnings
@@ -60,12 +76,12 @@ ARCH_TAG = '' if WINDOWS else ('arm64' if _arch == 'arm64' else
 
 
 def quit_hint() -> str:
-    """How you leave the game, which no in-game key does on either platform."""
-    return 'Alt+F4' if WINDOWS else 'Cmd+Q'
+    """How you leave the game, which no in-game key does on any platform."""
+    return 'Cmd+Q' if MAC else 'Alt+F4'
 
 
 #: How the port names itself in banners and reports.
-PORT_NAME = 'Mac' if MAC else 'Windows' if WINDOWS else PLATFORM.capitalize()
+PORT_NAME = 'Mac' if MAC else 'Windows' if WINDOWS else 'Linux' if LINUX else PLATFORM.capitalize()
 
 
 def mono_audio_setting() -> bool | None:
@@ -106,4 +122,8 @@ def mono_audio_setting() -> bool | None:
 
 def speech_backend_order() -> list[str]:
     """Which screen-reader backends to try, best first."""
-    return ['voiceover', 'null'] if MAC else ['nvda', 'sapi', 'null']
+    if MAC:
+        return ['voiceover', 'null']
+    if LINUX:
+        return ['speechd', 'espeak', 'null']
+    return ['nvda', 'sapi', 'null']
