@@ -182,8 +182,6 @@ class OpenAL:
 
     def __init__(self, dll_path: str | None = None):
         self.path = dll_path or DEFAULT_DLL
-        if not os.path.exists(self.path):
-            raise OpenALError(f'OpenAL Soft not found at {self.path}')
         # Make sure the library's own directory is searched for its
         # dependencies - a Windows idea (add_dll_directory), and on the Mac
         # the equivalent is telling the loader where @rpath resolves, which
@@ -200,7 +198,10 @@ class OpenAL:
             if lib_dir not in env.split(':'):
                 os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = (
                     f'{lib_dir}:{env}' if env else lib_dir)
-        self.lib = ctypes.CDLL(self.path)
+        try:
+            self.lib = ctypes.CDLL(self.path)
+        except OSError as exc:
+            raise OpenALError(f'OpenAL Soft not found: {self.path}') from exc
         self._declare()
         self._efx: dict[str, ctypes._CFuncPtr] = {}
 

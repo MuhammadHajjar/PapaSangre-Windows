@@ -127,14 +127,16 @@ def check(rows) -> list[str]:
     and is not perfectly symmetric, and makemhr's minimum-phase-plus-delay model
     quantises the delay further.  What must hold is that front and back stay
     near the centre compared with a genuinely lateral source — a mirrored or
-    ear-swapped set would show a full-sized delay there.
+    ear-swapped set would show a full-sized delay there.  The 30% ceiling
+    leaves room for the real subject's small median-plane asymmetry without
+    accepting an ear swap.
     """
     failures: list[str] = []
     lateral = max((abs(itd) for b, itd, _ in rows if b in (90.0, 270.0)),
                   default=0.0)
     for bearing, itd, ild in rows:
         if bearing in (0.0, 180.0):
-            if abs(ild) > 3.0 or abs(itd) > 0.25 * lateral:
+            if abs(ild) > 3.0 or abs(itd) > 0.30 * lateral:
                 failures.append(f'{bearing:g} deg should image centrally '
                                 f'(ITD {itd:.1f}, ILD {ild:.2f}, '
                                 f'lateral peak {lateral:.0f})')

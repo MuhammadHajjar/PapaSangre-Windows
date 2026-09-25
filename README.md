@@ -1,7 +1,7 @@
-# Papa Sangre — Windows and macOS port
+# Papa Sangre — Windows, macOS, and Linux port
 
-A faithful port of *Papa Sangre* (Somethin' Else, iOS, 2010) to Windows and
-macOS: the audio-only horror game you play entirely by listening. All 25
+A faithful port of *Papa Sangre* (Somethin' Else, iOS, 2010) to Windows,
+macOS, and Linux: the audio-only horror game you play entirely by listening. All 25
 levels, keyboard and controller, screen-reader output, and the original's own
 HRTF.
 
@@ -14,18 +14,18 @@ game itself.
 
 ## Building
 
-Everything the game runs on is in here: the audio, the Tiled map exports, the
-S3D playlists, the message and object lists, and the HRTF table. Clone it and
-build, there is nothing else to find.
+The game's audio, Tiled map exports, S3D playlists, message and object lists,
+and HRTF source table are in the repository. Linux also needs the system's
+OpenAL Soft, Speech Dispatcher service and Python binding, and `makemhr`.
 
     python tools/build_exes.py        all apps, for the platform you are on
 
-That is the whole Mac story and the whole Windows story.  Each platform gets
-its own game object: `Play Papa Sangre.exe` on Windows, `Play Papa Sangre.app`
-on the Mac. Both carry their own OpenAL Soft
+Windows and macOS each get their own game object: `Play Papa Sangre.exe` on
+Windows, `Play Papa Sangre.app` on the Mac. Both carry their own OpenAL Soft
 (``vendor/openal/soft_oal.dll`` vs ``vendor/openal-mac/libopenal.dylib``),
 the recovered `.mhr` HRTF, and - Windows only - the NVDA controller client.
 Speech on the Mac is VoiceOver, part of the operating system.
+The Linux build uses the system Speech Dispatcher service.
 
 How a bundle is frozen matters for how fast the game appears: a one-file
 PyInstaller build unpacks its whole payload to a temp dir on every launch,
@@ -39,7 +39,8 @@ The HRTF is not committed in its built form: `build/` is generated.  The
 committed `tools/embedded_hrtf.dat` is the original IRCAM 1050 set, and
 `build_exes.py` rebuilds `build/hrtf/papa_ircam_1050.mhr` from it on a fresh
 clone, needing `vendor/makemhr/makemhr.exe` (Windows, from openal-soft's
-binary zip) or `vendor/makemhr-mac/makemhr` (Mac, built and committed).  The
+binary zip), `vendor/makemhr-mac/makemhr` (Mac, built and committed), or
+`makemhr` from the system on Linux. The
 Mac OpenAL dylib and makemhr are built once per machine with
 `tools/build_openal_mac.sh` and committed.
 
@@ -58,13 +59,35 @@ journal and checking it.
 
 ## Running from source
 
-Python 3.12+, `pygame-ce`, `pyobjc-framework-cocoa` on the Mac, and OpenAL
+Python 3.13+, `pygame-ce`, `pyobjc-framework-cocoa` on the Mac, and OpenAL
 Soft. Speech goes through the NVDA controller client when NVDA is running,
-SAPI 5 otherwise; on the Mac it goes through VoiceOver.
+SAPI 5 otherwise; on the Mac it goes through VoiceOver, and on Linux through
+Speech Dispatcher. Install the distribution's service and Python 3 client
+package, such as `speech-dispatcher` on Arch or `speech-dispatcher` plus
+`python3-speechd` on Debian.
 
-    python apps/play.py               the game
-    python apps/play.py ps1_17        straight into one level
-    python tools/autoplay.py ps1_5    automated playthrough, for testing
+On Linux, use the system Python that can import `speechd`. The binding is
+provided by the distribution, not by `uv`. The system Python must be 3.13 or
+newer. Create a project environment that can see its system site-packages:
+
+    python3 -c "import speechd"
+    uv venv --system-site-packages --python "$(command -v python3)"
+    uv sync --locked
+
+On a fresh clone, generate the HRTF before playing. Install your
+distribution's `makemhr` tool (usually provided by OpenAL Soft), then run:
+
+    .venv/bin/python tools/extract_hrtf.py
+    makemhr -i build/hrtf/papa_ircam_1050.def -o build/hrtf/papa_ircam_1050.mhr
+
+Run the game with the project's Python:
+
+    .venv/bin/python apps/play.py
+    .venv/bin/python apps/play.py ps1_17
+    .venv/bin/python tools/autoplay.py ps1_5
+
+The second command starts directly at level 17; the third runs an automated
+playthrough for testing.
 
 ## Controls
 
@@ -92,8 +115,8 @@ Controller, rebindable in Options → Controller buttons:
 | Start | pause menu |
 | Shoulders | volume |
 
-Nothing on the keyboard or the pad quits the game: that is Alt+F4 on Windows,
-Cmd+Q on the Mac, or Quit in a menu.
+Nothing on the keyboard or the pad quits the game: use Alt+F4 on Windows or
+Linux, Cmd+Q on the Mac, or Quit in a menu.
 
 ## Layout
 

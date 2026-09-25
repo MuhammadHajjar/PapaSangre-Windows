@@ -7,6 +7,6 @@ dependencies = [
     "numpy>=2.5.3",
     "pygame-ce>=2.5.8",
     "pyinstaller>=6.22.3",
-    "pyobjc-framework-cocoa>=12.2.2",
+    "pyobjc-framework-cocoa>=12.2.2; sys_platform == 'darwin'",
     "soundfile>=0.14.0",
 ]

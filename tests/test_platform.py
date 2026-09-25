@@ -10,6 +10,8 @@ DLL has its VoiceOver bridge, ``soft_oal.dll`` its ``libopenal.dylib``, the
 import ast
 import os
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -25,26 +27,32 @@ VENDOR_NVDA = os.path.join(ROOT, 'vendor', 'nvda',
 
 # ------------------------------------------------------------ platform module
 def test_platform_is_decided_once():
-    assert host.PLATFORM in ('windows', 'mac', 'other')
+    assert host.PLATFORM in ('windows', 'mac', 'linux', 'other')
     assert host.WINDOWS == (sys.platform == 'win32')
     assert host.MAC == (sys.platform == 'darwin')
-    # exactly one of the two supported platforms, never both
-    assert not (host.WINDOWS and host.MAC)
+    assert host.LINUX == sys.platform.startswith('linux')
+    # exactly one of the supported platforms, never two
+    assert sum((host.WINDOWS, host.MAC, host.LINUX)) <= 1
 
 
 def test_the_port_names_itself_for_the_platform():
-    assert host.PORT_NAME == ('Mac' if host.MAC else
-                              'Windows' if host.WINDOWS else 'Other')
+    expected = {'mac': 'Mac', 'windows': 'Windows', 'linux': 'Linux',
+                'other': 'Other'}[host.PLATFORM]
+    assert host.PORT_NAME == expected
 
 
 def test_quit_hint_is_the_platforms_window_close():
-    assert host.quit_hint() == ('Cmd+Q' if host.MAC else
-                                'Alt+F4' if host.WINDOWS else 'window close')
+    expected = ('Cmd+Q' if host.MAC else
+                'Alt+F4' if host.WINDOWS or host.LINUX else
+                'window close')
+    assert host.quit_hint() == expected
 
 
 def test_speech_backend_order_follows_the_platform():
     if host.MAC:
         assert host.speech_backend_order() == ['voiceover', 'null']
+    elif host.LINUX:
+        assert host.speech_backend_order() == ['speechd']
     elif host.WINDOWS:
         assert host.speech_backend_order() == ['nvda', 'sapi', 'null']
 
@@ -58,14 +66,48 @@ def test_mono_setting_never_raises_anywhere():
 # ------------------------------------------------------------------- speech
 def test_speech_factory_respects_the_platform():
     from papasangre.accessibility import speech
-    backend = speech.create()
+    if host.LINUX:
+        class Client:
+            def set_priority(self, priority):
+                self.priority = priority
+
+            def close(self):
+                pass
+
+        fake_speechd = SimpleNamespace(
+            Client=Client,
+            client=SimpleNamespace(Priority=SimpleNamespace(MESSAGE=1)))
+        with patch.dict(sys.modules, {'speechd': fake_speechd}):
+            backend = speech.create()
+    else:
+        backend = speech.create()
     try:
         if host.MAC:
             assert backend.name in ('voiceover', 'null'), backend.name
+        elif host.LINUX:
+            assert backend.name == 'speechd', backend.name
         elif host.WINDOWS:
             assert backend.name in ('nvda', 'sapi', 'null'), backend.name
     finally:
         backend.close()
+
+
+def test_linux_speech_does_not_silently_fall_back():
+    if not host.LINUX:
+        return
+    from papasangre.accessibility import speech
+
+    def unavailable_client():
+        raise OSError('service unavailable')
+
+    fake_speechd = SimpleNamespace(Client=unavailable_client)
+    with patch.dict(sys.modules, {'speechd': fake_speechd}):
+        try:
+            speech.create()
+        except RuntimeError as exc:
+            assert 'Speech Dispatcher is unavailable' in str(exc)
+        else:
+            raise AssertionError('missing Speech Dispatcher must be reported')
 
 
 def test_forcing_a_backend_wins_over_the_platform():
@@ -99,9 +141,19 @@ def test_openal_library_is_the_platforms_own_and_exists():
     from papasangre.util import paths
     if host.MAC:
         assert os.path.basename(paths.openal_dll()) == 'libopenal.dylib'
+    elif host.LINUX:
+        assert os.path.basename(paths.openal_dll()) in ('libopenal.so',
+                                                        'libopenal.so.1')
     else:
         assert os.path.basename(paths.openal_dll()) == 'soft_oal.dll'
-    assert os.path.exists(paths.openal_dll()), paths.openal_dll()
+    if host.LINUX:
+        import ctypes
+        try:
+            ctypes.CDLL(paths.openal_dll())
+        except OSError as exc:
+            raise AssertionError(f'cannot load {paths.openal_dll()}: {exc}')
+    else:
+        assert os.path.exists(paths.openal_dll()), paths.openal_dll()
 
 
 def test_both_platforms_libraries_are_vendored():

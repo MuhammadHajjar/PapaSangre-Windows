@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from papasangre.util import host                            # noqa: E402
+from papasangre.util import paths                           # noqa: E402
 
 APPS = os.path.join(ROOT, 'apps')
 RUN = os.path.join(ROOT, 'Run')
@@ -67,9 +69,11 @@ def version() -> str:
 
 
 def openal_library() -> str:
-    """The OpenAL Soft library for this platform, from vendor/."""
+    """The OpenAL Soft library for the current platform."""
     if host.MAC:
         p = os.path.join(ROOT, 'vendor', 'openal-mac', 'libopenal.dylib')
+    elif host.LINUX:
+        return _linux_openal_library()
     else:
         p = os.path.join(ROOT, 'vendor', 'openal', 'soft_oal.dll')
     if not os.path.exists(p):
@@ -81,16 +85,37 @@ def openal_library() -> str:
     return p
 
 
+def _linux_openal_library() -> str:
+    """Resolve the system OpenAL Soft shared library for packaging."""
+    candidate = paths.openal_dll()
+    if os.path.isfile(candidate):
+        return candidate
+    try:
+        cache = subprocess.run(['ldconfig', '-p'], capture_output=True,
+                               text=True, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return candidate
+    for line in cache.splitlines():
+        if 'libopenal.so' not in line:
+            continue
+        match = re.search(r'=>\s*(/\S+)', line)
+        if match and os.path.isfile(match.group(1)):
+            return match.group(1)
+    return candidate
+
+
 OPENAL = openal_library()
 NVDA_DIR = os.path.join(ROOT, 'vendor', 'nvda')
 
 
 def makemhr_binary() -> str | None:
-    """The platform's makemhr: ``makemhr.exe`` on Windows, the Mac build there."""
+    """The platform's makemhr: vendored on Windows/Mac, from PATH on Linux."""
     if host.MAC:
         p = os.path.join(ROOT, 'vendor', 'makemhr-mac', 'makemhr')
-    else:
-        p = os.path.join(ROOT, 'vendor', 'makemhr', 'makemhr.exe')
+        return p if os.path.exists(p) else None
+    if host.LINUX:
+        return shutil.which('makemhr')
+    p = os.path.join(ROOT, 'vendor', 'makemhr', 'makemhr.exe')
     return p if os.path.exists(p) else None
 
 
@@ -122,7 +147,9 @@ def prepare_hrtf() -> str:
             f'missing makemhr: {makemhr_binary() or "?"}\n'
             f'Windows: it ships in the openal-soft binary zip, see README.md.\n'
             f'Mac: build it with tools/build_openal_mac.sh, or copy the '
-            'arm64 makemhr into vendor/makemhr-mac/')
+            'arm64 makemhr into vendor/makemhr-mac/.\n'
+            'Linux: install the openal-soft tools package, which provides '
+            'makemhr.')
     subprocess.run([makemhr,
                     '-i', os.path.join(HRTF_DIR, 'papa_ircam_1050.def'),
                     '-o', HRTF],
