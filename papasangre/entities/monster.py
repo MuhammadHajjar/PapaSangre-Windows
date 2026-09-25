@@ -110,6 +110,9 @@ class Monster(GameAgent):
         #: [REQUESTED] while this is in the future the enemy holds state 4
         #: and keeps snarling.  -1 means it is not snarling.
         self._snarl_until = -1.0
+        #: [REQUESTED] set by an alert that must be heard - going down is the
+        #: one - so the next state 4 pass snarls even though the latch is up.
+        self._force_snarl = False
 
         for msg, handler in (
             ('PGE_MESSAGE_AlertAllEnemies', self._on_alert_all),
@@ -156,7 +159,8 @@ class Monster(GameAgent):
         return float(getattr(sound, 'duration', 0.0) or 0.0)
 
     # ------------------------------------------------------------- alerts
-    def alert(self, to: str, position=None, chase_time: float = 0.0) -> None:
+    def alert(self, to: str, position=None, chase_time: float = 0.0,
+              snarl: bool = False) -> None:
         """``-[PGEEnemy alertEnemy:]``
 
         Two entry guards, both read from 0x10001e11c-0x10001e154:
@@ -187,6 +191,14 @@ class Monster(GameAgent):
             # The original does nothing at all here - no state change.
             if self.distracted_timer != -1.0:
                 return
+            # [REQUESTED] ``snarl`` is the player going down (see
+            # Player.trip).  The latch below would otherwise send the enemy
+            # after the noise without a sound, because on ground that alerts
+            # every step it is already holding a wanted position - so falling
+            # on ps1_19's ice, or in ps1_7's guts, brought something at you in
+            # silence.  DIVERGENCES 4c.
+            if snarl:
+                self._force_snarl = True
             self.change_state_to(ALERT_POSITION)
         elif to == 'agent':
             self.distracted_timer = 0.0
@@ -199,12 +211,14 @@ class Monster(GameAgent):
 
     def _on_alert_all(self, _name: str, params: Params) -> None:
         self.alert(params.get('to', 'player'), params.get('position'),
-                   float(params.get('chaseTime', 0) or 0))
+                   float(params.get('chaseTime', 0) or 0),
+                   bool(params.get('snarl')))
 
     def _on_alert_named(self, _name: str, params: Params) -> None:
         if addressed_to(params, self.name):
             self.alert(params.get('to', 'player'), params.get('position'),
-                       float(params.get('chaseTime', 0) or 0))
+                       float(params.get('chaseTime', 0) or 0),
+                       bool(params.get('snarl')))
 
     def _on_alert_radius(self, _name: str, params: Params) -> None:
         """``AlertEnemiesWithinRadius`` - only those close enough hear it.
@@ -356,15 +370,25 @@ class Monster(GameAgent):
             # bookkeeping below.  An earlier attempt made every alert a fresh
             # entry, which reset chasingTime and re-aimed on every footstep and
             # turned the ps1_7 hog into something you cannot get past.
-            if self.has_wanted_position and now < self._snarl_until:
+            #
+            # [REQUESTED 2026-09-25] ``_force_snarl`` is a fall.  It takes the
+            # fresh-alert arm whatever the latch says, so you always hear the
+            # thing decide to come for you before it moves - and it still
+            # leaves the entry bookkeeping alone.
+            force, self._force_snarl = self._force_snarl, False
+            if self.has_wanted_position and not force and now < self._snarl_until:
                 pass                     # still snarling; re-aim when it ends
-            elif self.has_wanted_position:
+            elif self.has_wanted_position and not force:
                 self._snarl_until = -1.0
                 self.find_direction_to_player()
                 self.change_state_to(GO_TO_POSITION)     # at once, no delay
             else:
                 self._snarl_until = now + AGENT_ALERT_DELAY
                 self.play_sound(self.aware_sound)
+                # A forced snarl can land on an enemy that already has a
+                # transition pending; leaving that one queued would cut the
+                # snarl short.
+                self.bus.cancel((id(self), 'alert'))
                 self.bus.post_after(AGENT_ALERT_DELAY,
                                     'PGE_INTERNAL_EnemyState',
                                     {'name': self.name, 'state': GO_TO_POSITION},

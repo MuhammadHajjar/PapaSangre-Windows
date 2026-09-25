@@ -205,7 +205,9 @@ class MoveInterpretor:
         if self.feet.get(foot) == OFF:
             return False                      # same gate as the press
 
-        info = {'lastFoot': foot}
+        # ``time`` is carried so the player can stamp the step with the
+        # instant the key moved rather than with the current frame.
+        info = {'lastFoot': foot, 'time': now}
         if self.trip_would_fire(foot, now):
             # Dead code in the shipped game - see SAME_FOOT_TRIP_WINDOW.  Note
             # what it skips: no timestamp, no step, and lastFootButtonPressed is

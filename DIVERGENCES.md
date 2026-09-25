@@ -48,6 +48,7 @@ Nothing currently outstanding.
 | The shuffle's 2 s re-check was scheduled off `bus.now` (last frame) while the foot was stamped with the key-release time, so it landed early and `gap` came out just under 2.0 — the shuffle fired only when the two clocks happened to agree | every level | **fixed** 2026-09-08 |
 | `-[PGEPlayer init]` BPM defaults — tripBPM 10000, runBPM 180, pixelsPerStep 1.0; the port had zeros, and `checkStepBPM` returns on its first line when either BPM is zero, so the player never entered the running state | every level | **fixed** 2026-09-08 |
 | `applyBPMConstraint:` sets `tripBPM` as well as storing the value | ps1_12, ps1_23 | **fixed** 2026-09-08 |
+| **`setTripBPM:` is not a plain setter, and the ice levels depend on it.** 0x100025e38: it returns if the value is unchanged, returns if `bpm_constaint` is non-zero, and otherwise stores the value **and calls `resetBPM`** (0x100025e68). `playerMovedToPosition:` sends it on every step, so the equality test is what stops the history being wiped constantly - and the `resetBPM` is what makes thin ice survivable: crossing onto ground with a different `tripBPM` throws the tempo history away, so the ice is judged only on steps taken on the ice. Without it `checkStepBPM`, which runs *before* the new step is recorded and averages four intervals, judged your second ice step on the four snow steps behind you - 113 BPM against a limit of 80 - and slowing down could not save you. The constraint clause is the other half: once ps1_12's old man or ps1_23's siren has applied one, no surface can move `tripBPM` again, where a plain assignment let the next step undo the dilemma entirely | ps1_11, ps1_12, ps1_19, ps1_23 | **fixed** 2026-09-25 |
 | **State 7 (ATTACK) did not silence the enemy.** The original sets `speed` to 0, stops the current sound **unconditionally**, and only then plays `attackSound` if there is one - and it does this every frame, with no entry guard. The port only stopped the sound when an `attackSound` existed, so the kennel hog kept looping its grunt beside you all through the failure narration. Related: `playSound:looping:` guards on the **name alone** (0x10001e878), not on whether the sound is still playing, which is what keeps it silent once stopped. | ps1_3 on | **fixed** 2026-09-08 |
 | **`-[PGEEnemy collidesWithPlayer]` was not overridden.** `PGEGameAgent` has no "already triggered" latch - it fires `OnCollide` every frame you are inside the radius - and `PGEEnemy` is what provides one: `if (state == 7) return; setSpeed:0; changeStateTo:7; [super collidesWithPlayer]`. Without it the kennel hog re-fired `ShutDownLevel` every frame, and since that deactivates every agent *except the sender*, the failure narration was switched off the frame after it started, never reached `OnSoundEnd`, and the level never reloaded - while the hog, being the sender, kept grunting. Froze the game with a stuck hog. | ps1_3 on | **fixed** 2026-09-08 |
 | **The room is the floor, and the port did not know it.** `PGELevel` *is* a `PGESurface`, and `playerMovedToPosition:` starts its search with **self** as the current best floor (0x10003231c); a Surface only takes over by containing the player at a higher `z`. The port treated "on no surface" as a separate case with nothing assigned, so in a level with no Surface objects - ps1_1, ps1_5, ps1_9 and others - the player never received a `tripBPM` at all and could not fall. Fixed by making `Level` a real `Surface` and running one unified path. | every level | **fixed** 2026-09-10 |
@@ -171,6 +172,18 @@ add `tripSound` to ps1_7's six surfaces (edits the original level data), or
 restore the missing `stringWithFormat:@"%@_trip"` the discarded prefix was
 plainly meant for (edits engine behaviour on every level that names none).
 
+### The BPM reading is 25–50% high — and is no longer reproduced
+
+`updateBPMCounter` sums the gaps between the timestamps it holds and divides by
+`[walkTimes count]` (0x100025d64) instead of by the number of gaps. Five stamps
+span four gaps, so the answer is `count / (count - 1)` too high: 25% at five
+stamps, 33% at four, 50% at three. A classic fencepost, and it means no
+authored `tripBPM` in the game means what it says — ps1_19's ice says 80 and
+tripped you above 53.
+
+It is not reproduced any more. See §4c — reproducing it made two levels
+unfinishable.
+
 ### The one-second wind-up in state 4 is dead code — and is now overridden
 
 State 4 schedules `changeStateTo:5` with `afterDelay:1.0` (0x10001da80), which
@@ -213,6 +226,61 @@ snarl ends. Two tests hold that line.
 Unaffected: `to=agent` (state 12, releasing ps1_23's chickens), which has its
 own entry guard and always snarled correctly, and `to=player` (state 2), whose
 snarl is a genuine recovery rather than a change.
+
+### The tempo reading is your tempo, not your history length
+
+`updateBPMCounter`'s fencepost (§4b) would be a curiosity if the array were
+always full. It is not: `resetBPM` empties it when you cross onto ground with a
+different `tripBPM` **and on every trip**, so the array fills from three stamps
+upward and the reading — and therefore the threshold — moves under you:
+
+| stamps | reading | what ps1_19's `tripBPM` 80 actually demanded |
+|---|---|---|
+| 3 | 90 / interval | slower than 1.125 s a step (53 real BPM) |
+| 4 | 80 / interval | slower than 1.000 s |
+| 5 | 75 / interval | slower than 0.938 s |
+
+Three stamps is the strictest, and a trip puts you back there. On a seven-step
+ice band that is three free steps, a fall, three free steps, a fall, for as long
+as you keep trying — and slowing down does not help, because the window you are
+judged on is the four steps *behind* you. ps1_19 and ps1_23 could not be
+finished.
+
+The port divides by the gaps. The reading is then exactly `60 / interval` at
+every history length, so:
+
+* every authored cap means real beats per minute — the ice trips you above 80
+  (0.75 s a step), ps1_11's quicksand above 65 (0.923 s), the siren and the old
+  man above 50 (1.2 s);
+* a rhythm that is safe stays safe, which is what both players remembered;
+* `resetBPM` stops moving the threshold and simply gives three steps' grace on
+  new ground.
+
+Asked for on 2026-09-25: *"still every like 4 steps in the thin ice area in
+level 19 I trip, even if I walk very very slowly... the level couldn't be
+completed and is like a softlock"*.
+
+One character in `update_bpm_counter`, and it is the only place the port
+knowingly disagrees with the engine's arithmetic. Reverting it means reverting
+to a game with two unfinishable levels.
+
+### Going down is always heard, latch or no latch
+
+The latch above is what keeps the roar from restarting under every footstep on
+ps1_7's guts, and that is right. But it also swallowed the one alert that has to
+be heard: trip while an enemy is already on its way to an earlier noise and
+`hasWantedPosition` is up, so the fresh-alert arm is skipped, the enemy is
+re-aimed in silence and simply arrives. On ps1_19 and ps1_23, where the ice
+alerts on every step, that was every fall.
+
+`Player.trip` now marks its `AlertAllEnemies` with `snarl`, and a marked alert
+takes the fresh-alert arm whatever the latch says — snarl, the second's
+wind-up, then the chase. Nothing else sets the mark, so a floor that alerts as
+you cross it behaves exactly as before, and state 4's entry bookkeeping is
+still untouched.
+
+Asked for on 2026-09-25: *"when I fall the hog plays its attention sound then
+follows, still follows immediately"*.
 
 ### Walking away from a lost soul leaves them resting again
 

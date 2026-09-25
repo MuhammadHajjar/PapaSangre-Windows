@@ -270,6 +270,120 @@ def test_ps1_19_alerts_nobody_because_the_message_does_not_exist():
     assert hog.state == IDLE, 'nothing observes that message'
 
 
+def test_ps1_19_slowing_down_for_the_ice_actually_saves_you():
+    """The ice bug: ``setTripBPM:`` throws the tempo history away.
+
+    ps1_19's first ice band starts four steps from where you are put down, and
+    it caps you at ``tripBPM`` 80 where the snow around it runs at the loader's
+    280.  ``checkStepBPM`` runs **before** the new step is recorded and averages
+    the last four intervals, so the reading you are judged on as you take your
+    second step on the ice was built entirely out of the snow steps behind you.
+
+    ``-[PGEPlayer setTripBPM:]`` (0x100025e38) is what makes that survivable:
+    the value changing calls ``resetBPM``, so the ice is measured only from
+    steps taken on the ice.  Without it, walking the snow at a normal pace and
+    then creeping across the ice read 113 BPM against a limit of 80 and put you
+    down every single time, however slowly you went - reported from ps1_19 and
+    ps1_23 as six slow steps and then a random fall.
+    """
+    from papasangre.input.interpreter import LEFT, RIGHT          # noqa: PLC0415
+    ice = [s for s in build('ps1_19')[3].floors if s.trip_bpm == 80.0]
+    assert len(ice) == 2, 'two bands, both at 80'
+    lo, hi = ice[1].rect[1], ice[1].rect[1] + ice[1].rect[3]
+    assert lo < 0 < hi + 200, (lo, hi)
+
+    bus, mi, _bank, lv, t = started('ps1_19')
+    mi.player_can_walk = True
+    mi.feet = {LEFT: 'on', RIGHT: 'on'}
+    p, foot, tripped, on_ice_steps = lv.player, LEFT, [], 0
+    for _ in range(14):
+        on_ice = any(s.contains(*p.position) for s in ice)
+        t += 1.20 if on_ice else 0.70    # brisk on the snow, a crawl on the ice
+        bus.now = t
+        if mi.foot_pressed(foot):
+            mi.foot_released(foot, t)
+            on_ice_steps += any(s.contains(*p.position) for s in ice)
+            if p.state == 3:
+                tripped.append((round(t, 2), round(p.position[1], 1),
+                                round(p.walk_bpm, 1)))
+            foot = RIGHT if foot is LEFT else LEFT
+        lv.update(t)
+    assert not tripped, f'creeping across the ice still fell: {tripped}'
+    assert on_ice_steps >= 5, f'only {on_ice_steps} steps landed on the ice'
+
+
+def test_ps1_19_the_ice_can_be_walked_at_the_tempo_its_data_allows():
+    """The softlock: three free steps, a fall, three free steps, a fall.
+
+    ps1_19's ice says ``tripBPM`` 80, which is 0.75 s a step. Under the
+    original's fencepost the three-stamp reading was 50% high, so it actually
+    tripped you above 53 BPM - and ``resetBPM`` runs on **every trip**, so going
+    down put you back at three stamps with the threshold at its strictest. Seven
+    steps to cross a band and a fall every fourth step is a band you never
+    leave: "even if I walk very very slowly... like a softlock".
+
+    0.9 s a step is 67 BPM, comfortably inside what the level authorises, so it
+    must cross both bands without a single fall.
+    """
+    from papasangre.input.interpreter import LEFT, RIGHT          # noqa: PLC0415
+    bus, mi, _bank, lv, t = started('ps1_19')
+    ice = [s for s in lv.floors if s.trip_bpm == 80.0]
+    mi.player_can_walk = True
+    mi.feet = {LEFT: 'on', RIGHT: 'on'}
+    p, foot, tripped, on_ice = lv.player, LEFT, [], 0
+    for _ in range(40):
+        t += 0.90
+        bus.now = t
+        judged = p.walk_bpm           # what checkStepBPM will compare
+        if mi.foot_pressed(foot):
+            mi.foot_released(foot, t)
+            on_ice += any(s.contains(*p.position) for s in ice)
+            if p.state == 3:
+                tripped.append((round(p.position[1], 1), round(judged, 1)))
+            foot = RIGHT if foot is LEFT else LEFT
+        lv.update(t)
+    assert not tripped, f'67 BPM fell on ground authored for 80: {tripped}'
+    assert on_ice >= 12, f'only {on_ice} steps landed on ice, expected both bands'
+
+
+def test_tripbpm_only_resets_the_tempo_when_the_ground_really_changes():
+    """The other half of ``setTripBPM:`` - the equality test at 0x100025e44.
+
+    ``playerMovedToPosition:`` sends it on every step, so without that test the
+    history would be wiped on every step and nothing could ever trip.
+    """
+    from papasangre.core.messages import MessageBus               # noqa: PLC0415
+    from papasangre.entities.player import Player                 # noqa: PLC0415
+    p = Player(MessageBus())
+    p.walk_times = [0.0, 1.0, 2.0]
+    p.trip_bpm = 10000.0                 # what it already is
+    assert p.walk_times == [0.0, 1.0, 2.0], 'no change, no reset'
+    p.trip_bpm = 80.0
+    assert p.walk_times == [], 'crossing onto different ground clears it'
+
+
+def test_a_bpm_constraint_locks_out_every_surface_for_the_rest_of_the_level():
+    """ps1_23's siren, and ps1_12's old man: 0x100025e58.
+
+    ``ApplyBpmConstraint:value=50`` stores the constraint, and from then on
+    ``setTripBPM:`` returns without doing anything - so the surface you step on
+    next cannot hand your old tempo back.  A plain assignment let the very next
+    step undo the dilemma, which meant carrying them cost nothing.
+    """
+    from papasangre.entities.dilemma import Dilemma               # noqa: PLC0415
+    bus, _mi, _bank, lv, t = started('ps1_23')
+    siren = [a for a in lv.agents if isinstance(a, Dilemma) and a.name == 'siren']
+    assert siren, 'ps1_23 carries the siren'
+    t = collect(bus, lv, t, 'siren')
+    assert lv.player.bpm_constraint == 50.0
+    assert lv.player.trip_bpm == 50.0
+    # now stand on the ice, whose surfaces carry the loader's 280
+    lv.player.position = (0.0, -100.0)
+    bus.post('PGE_MESSAGE_PlayerMovedToPosition',
+             {'position': lv.player.position})
+    assert lv.player.trip_bpm == 50.0, 'the constraint outlasts the ground'
+
+
 def test_ps1_20_and_22_are_the_snowfields():
     for stem in ('ps1_20', 'ps1_22'):
         _bus, _mi, _bank, lv = build(stem)

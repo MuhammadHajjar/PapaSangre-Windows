@@ -424,6 +424,68 @@ def test_walking_the_guts_snarls_once_and_then_just_chases():
         f'it snarled more than once: {starts}'
 
 
+def test_going_down_snarls_even_when_the_hog_is_already_hunting():
+    """[REQUESTED] The fall has to be answered by a sound.
+
+    The latch in the test above is right, and on the guts it is what keeps the
+    roar from restarting under every footstep.  But it also swallowed the one
+    alert you most need to hear: trip while the hog is already on its way to a
+    noise and ``hasWantedPosition`` is up, so state 4 re-aimed it in silence and
+    the thing simply arrived.  Reported as "when I fall the hog follows
+    immediately instead of sounding first".
+
+    ``Player.trip`` now marks its alert, and a marked alert takes the
+    fresh-alert arm whatever the latch says: the snarl, then the second's
+    wind-up, then the chase.  DIVERGENCES 4c.
+    """
+    from papasangre.entities.monster import (ALERT_POSITION,       # noqa: PLC0415
+                                             GO_TO_POSITION)
+    bus, mi, bank, lv = build()
+    t = start(bus, lv)
+    hog = lv.agent('hog1')
+    guts = [s for s in lv.floors if s.footsteps_prefix == 'foot_guts'][0]
+    x, y, w, h = guts.rect
+    cx, cy = x + w / 2.0, y + h / 2.0
+
+    dt = 1.0 / 60.0
+    foot = LEFT
+    for n in range(4):                   # get it latched and on its way
+        t += 0.6
+        bus.now = t
+        lv.player.position = (cx + (6 if n % 2 else -6), cy)
+        mi.foot_pressed(foot)
+        mi.foot_released(foot, t)
+        foot = RIGHT if foot == LEFT else LEFT
+        for _ in range(6):
+            t += dt
+            bus.now = t
+            lv.update(t)
+    assert hog.has_wanted_position or hog.state == GO_TO_POSITION,         f'the hog should already be hunting, it is {hog.state_name}'
+
+    before = len(bank.played)
+    lv.player.trip()
+    t += dt
+    bus.now = t
+    lv.update(t)
+    heard = [s for s in bank.played[before:] if s.startswith('monster')]
+    assert 'monster_hog1_01_dry_aware' in heard,         f'falling brought it on in silence: {heard}'
+    assert hog.state == ALERT_POSITION, hog.state_name
+
+    for _ in range(30):                  # half a second in - still snarling
+        t += dt
+        bus.now = t
+        lv.update(t)
+    assert hog.state == ALERT_POSITION,         f'the snarl was cut short ({hog.state_name})'
+    assert hog._current_sound_name == 'monster_hog1_01_dry_aware'
+
+    for _ in range(45):                  # past the second, it comes for you
+        t += dt
+        bus.now = t
+        lv.update(t)
+    assert hog.state == GO_TO_POSITION, hog.state_name
+    assert hog._current_sound_name == 'monster_hog1_01_dry_chase'
+
+
 if __name__ == '__main__':
     fns = [v for k, v in sorted(globals().items()) if k.startswith('test_')]
     failed = 0

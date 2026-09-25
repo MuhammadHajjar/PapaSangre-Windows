@@ -168,7 +168,14 @@ def play(stem, steps=2500, interval=0.45, keep=70.0, progress=None,
             # tests the tempo you *arrive* with against the new surface's
             # tripBPM, so speeding up on fast ground and then crossing onto
             # slow ground trips you - and a trip alerts every enemy there is.
-            safe = 75.0 / (slowest * 0.85) if slowest > 0 else interval
+            # A dilemma's ApplyBpmConstraint is not in the surface data and
+            # locks tripBPM for the rest of the level (setTripBPM: refuses to
+            # move once bpm_constaint is set), so pace off whichever of the two
+            # is stricter - otherwise picking up ps1_12's old man or ps1_23's
+            # siren leaves the bot tripping on every step.
+            live = p.trip_bpm if 0.0 < p.trip_bpm < 9999.0 else 0.0
+            cap = min([v for v in (slowest, live) if v > 0.0], default=0.0)
+            safe = 75.0 / (cap * 0.85) if cap > 0 else interval
             t += max(interval, safe)
             bus.now = t
             mi.foot_pressed(foot)

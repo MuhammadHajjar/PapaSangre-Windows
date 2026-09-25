@@ -439,13 +439,29 @@ def test_walking_into_the_room_edge_reports_a_wall_and_does_not_move():
     assert len(r.seen) == 1
 
 
-def test_bpm_uses_the_originals_divide_by_count():
-    """60 / (span / count), not 60 / (span / intervals)."""
+def test_bpm_reads_the_tempo_and_not_the_history_length():
+    """[REQUESTED] The original's fencepost, and why it could not stay.
+
+    `updateBPMCounter` divides the summed gaps by `[walkTimes count]`
+    (0x100025d64) rather than by the number of gaps, so five stamps spanning
+    four gaps read 25% high and three stamps read 50% high. The reading was
+    therefore not your tempo but your tempo times `count / (count - 1)`, and
+    since the array fills from empty after every `resetBPM` - which runs on a
+    trip and on crossing onto ground with a different `tripBPM` - the threshold
+    moved under you. On ps1_19's seven-step ice band that meant three free
+    steps, a fall, three free steps, a fall, with no way off the ice.
+
+    Corrected, the reading is exactly 60 / interval at every history length, so
+    every authored `tripBPM` means real beats per minute. DIVERGENCES 4c.
+    """
     p = Player(MessageBus())
-    for t in (0.0, 0.5, 1.0):        # two intervals of 0.5 s
+    for t in (0.0, 0.5, 1.0):        # two intervals of half a second
         p.update_bpm_counter(t)
-    # sum = 1.0, count = 3 -> average 0.3333 -> 180 BPM (not 120)
-    assert abs(p.walk_bpm - 180.0) < 1e-6
+    assert abs(p.walk_bpm - 120.0) < 1e-6, 'two steps a second is 120 BPM'
+    # and it stays 120 as the history fills, which is the whole point
+    for t in (1.5, 2.0, 2.5, 3.0):
+        p.update_bpm_counter(t)
+        assert abs(p.walk_bpm - 120.0) < 1e-6,             f'{len(p.walk_times)} stamps read {p.walk_bpm:.1f}, not 120'
 
 
 def test_walk_times_are_capped_at_five():
@@ -458,11 +474,11 @@ def test_walk_times_are_capped_at_five():
 def test_speed_bank_switches_at_two_hundred_bpm():
     p = Player(MessageBus())
     for t in (0.0, 0.5, 1.0):
-        p.update_bpm_counter(t)      # 180 BPM
+        p.update_bpm_counter(t)      # 120 BPM
     assert p.speed == 's1'
     p.walk_times.clear()
     for t in (0.0, 0.2, 0.4):
-        p.update_bpm_counter(t)      # 60 / (0.4/3) = 450 BPM
+        p.update_bpm_counter(t)      # 60 / 0.2 = 300 BPM
     assert p.speed == 's3'
 
 

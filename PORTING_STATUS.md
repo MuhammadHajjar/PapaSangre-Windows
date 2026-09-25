@@ -113,6 +113,105 @@ closing so a failure is never a window that flashes past.
 
 ## Progress log
 
+### 2026-09-25 - the ice, and a setter that is not a setter
+
+Two players reported that the ice levels had become impossible: "I can take
+like 6 really slow steps in a row successfully without tripping on the ice,
+then I take one more, at the same speed or even slower, and I just randomly
+trip." The second half of that sentence is the whole diagnosis, and I nearly
+missed it by measuring the wrong thing.
+
+`updateBPMCounter` and `checkStepBPM` were both faithful, instruction for
+instruction, so the arithmetic was not wrong. What was wrong was **when the
+arithmetic gets thrown away.** `tripBPM` is not a synthesised property:
+
+    -[PGEPlayer setTripBPM:]   0x100025e38
+        if (value == _tripBPM)      return;      # 0x100025e44
+        if (bpm_constaint != 0.0f)  return;      # 0x100025e58
+        _tripBPM = value;
+        [self resetBPM];                         # 0x100025e68
+
+The port assigned the ivar. Everything below follows from that one line.
+
+`-[PGELevel playerMovedToPosition:]` sends `setTripBPM:` on **every** step,
+which is why the equality test is there: walking on one kind of ground changes
+nothing. Crossing onto ground with a *different* `tripBPM` is what reaches
+`resetBPM` — and that is the safety valve the ice levels are built on.
+`checkStepBPM` runs **before** the new step is recorded and averages the last
+four intervals, so without the reset the reading you are judged on as you take
+your second step on ps1_19's ice was built entirely out of the four snow steps
+behind you. Measured: walking the snow at 0.7 s a step and then creeping across
+the ice at 1.2 s read **113 BPM against the ice's limit of 80** and put you
+down, on every attempt, however slowly you went. Slowing down could not help,
+because the window is four intervals long and by the time it caught up you had
+already fallen. With the reset the ice is judged only on steps taken on the
+ice: the same walk is clean, and a steady tempo has a single fixed threshold to
+learn instead of one that depends on whatever you did before you got there.
+
+The second clause is ps1_12's old man and ps1_23's siren. `ApplyBpmConstraint:
+value=50` leaves `bpm_constaint` non-zero and from that moment no surface can
+move `tripBPM` again — the constraint is meant to last the level. With a plain
+assignment the very next step handed the old threshold back, so carrying either
+of them cost nothing at all. It costs something now; both levels still finish.
+
+Note also the order inside `applyBPMConstraint:`: `setTripBPM:` at 0x100025afc,
+and only then the constraint stored at 0x100025b3c. Reversed, the constraint
+could never apply itself.
+
+Two smaller things went in beside it. A step is now stamped with the instant
+the key moved rather than the frame the message is delivered on — the original
+reads the clock inside the same call as the touch, and taking `bus.now`
+quantised every interval to the previous frame. And going down now always
+brings a snarl: the `hasWantedPosition` latch that stops ps1_7's guts
+re-roaring under every footstep was also swallowing the alert from a fall, so
+on ground that alerts as you cross it the thing came at you in silence. That
+one is a requested change, recorded in DIVERGENCES 4c.
+
+The lesson for the next one of these: `checkStepBPM` and `updateBPMCounter`
+were the obvious suspects and both were correct. The bug was in a **setter** —
+a four-instruction function nobody would think to disassemble — and the reason
+to look was one clause of the report, "or even slower", which no reading of the
+arithmetic can explain.
+
+**And then it was still broken**, which is the more useful half of this entry.
+He came back with "still every like 4 steps in the thin ice area I trip, even if
+I walk very very slowly... like a softlock". *Every four steps* is a signature:
+three free steps while `walkTimes` refills after a `resetBPM`, then the first
+check. So the check at three stamps was firing at a tempo that the check at five
+stamps would have passed — and the reason is the fencepost I had reproduced
+faithfully and written a test to protect:
+
+    average = total / [walkTimes count]      # 0x100025d64, 0x100025d6c
+
+Five stamps span four gaps. Dividing by the stamps makes the reading
+`count / (count - 1)` too high — 25% at five, 50% at three. Tabulated against
+ps1_19's authored `tripBPM` of 80:
+
+    3 stamps ->  90 / interval  ->  must step slower than 1.125 s
+    4 stamps ->  80 / interval  ->  slower than 1.000 s
+    5 stamps ->  75 / interval  ->  slower than 0.938 s
+    the number as written                     0.750 s
+
+So no cap in the game ever meant what it said, and — because `resetBPM` runs on
+every trip — going down dropped you back into the strictest reading. Seven steps
+to cross an ice band and a fall every fourth step is not a hard level, it is a
+level you cannot leave. Both halves of the earlier fix were right and neither
+was enough on its own.
+
+The port now divides by the gaps: the reading is exactly `60 / interval`
+whatever the history holds, every authored cap is real beats per minute, and
+`resetBPM` only grants three steps' grace instead of moving the goalposts.
+Measured on ps1_19: zero falls at 0.75 s a step and slower, falls above it, and
+no four-step cycle at any tempo. It is the one place the port knowingly
+disagrees with the engine's own arithmetic — DIVERGENCES 4b and 4c.
+
+Worth saying plainly: faithfulness bottomed out here. Reproducing the fencepost
+*and* reproducing `resetBPM` are each correct in isolation and together they
+make two levels unfinishable. Which suggests the shipped game differed from this
+binary somewhere I cannot see, and that when two players independently remember
+a mechanic behaving better than the disassembly says, that is evidence about the
+game rather than about their memories.
+
 ### 2026-09-21 - the roar before the charge
 
 Reported twice and dismissed once by me, which is the part worth recording.

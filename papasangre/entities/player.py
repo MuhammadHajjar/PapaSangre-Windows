@@ -76,6 +76,10 @@ class Player(TriggerHost):
         # state at all.  tripBPM 10000 means "never trip from speed" - only a
         # Surface (ps1_11 on) or ApplyBpmConstraint lowers it to something
         # reachable.  0x461c4000 and 0x43340000 at 0x100024a4c / 0x100024a64.
+        # ``setTripBPM:`` is not a plain setter and ``init`` goes through it
+        # (0x100024a44 sends it 0x461c4000), so the backing store has to exist
+        # first.  See the property at the bottom of the class.
+        self._trip_bpm = 0.0
         self.trip_bpm = 10000.0
         self.run_bpm = 180.0
         self.trip_sound = ''
@@ -169,12 +173,45 @@ class Player(TriggerHost):
 
     # ----------------------------------------------------------- the tempo
     def update_bpm_counter(self, now: float) -> None:
-        """``-[PGEPlayer updateBPMCounter]``
+        """``-[PGEPlayer updateBPMCounter]`` - with the original's fencepost fixed.
 
-        Reproduced exactly, including dividing the summed intervals by the
-        *count* of samples rather than by the number of intervals.  That is in
-        the original and inflates the reading by count/(count-1); changing it
-        would change how readily the player trips.
+        Everything here is the original except the divisor, and the divisor is
+        the whole reason the ice levels were unplayable.
+
+        The original sums the gaps between the timestamps it is holding and then
+        divides by the **number of timestamps** instead of the number of gaps
+        (`ucvtf s0, x0` on `[walkTimes count]` at 0x100025d64, then
+        `fdiv s0, s1, s0` at 0x100025d6c).  Five stamps span four gaps, so the
+        answer comes out `count / (count - 1)` too high - and since the array
+        fills from empty, *how* much too high depends on how many steps ago the
+        history was last cleared:
+
+        ====== ================ ==============================================
+        stamps reading          ps1_19's ice, whose data says tripBPM 80
+        ====== ================ ==============================================
+        3      90 / interval    trips you above 53 real BPM - slower than 1.125s
+        4      80 / interval    slower than 1.000s
+        5      75 / interval    slower than 0.938s
+        ====== ================ ==============================================
+
+        So the authored number never meant what it says, and worse, the
+        threshold moved. `resetBPM` runs when you cross onto ground with a
+        different `tripBPM` **and again on every trip**, so going down put you
+        straight back into the three-stamp window at its strictest: three free
+        steps, then a fall, three free steps, then a fall. On a seven-step ice
+        band that is not a difficulty spike, it is a level you cannot leave -
+        reported as "every like 4 steps in the thin ice I trip, even if I walk
+        very very slowly... like a softlock".
+
+        Dividing by the gaps makes the reading exactly 60 / interval - your
+        tempo, in beats per minute, whatever the history holds. Every authored
+        cap then means what it says: the ice trips you above 80 real BPM
+        (0.75s a step), ps1_11's quicksand above 65 (0.923s), the siren and the
+        old man above 50 (1.2s). The reset stops changing the threshold and just
+        gives you three steps' grace on new ground, and a rhythm that was safe
+        stays safe - which is what both players remembered of the original.
+
+        This is a change, not a recovery. See DIVERGENCES.md 4c.
         """
         self.walk_times.append(float(now))
         while len(self.walk_times) >= 6:
@@ -186,7 +223,10 @@ class Player(TriggerHost):
             for i in range(n):
                 total += self.walk_times[i + 1] - self.walk_times[i]
 
-        average = total / float(len(self.walk_times))
+        # [REQUESTED] ``/ float(n)`` where the original has
+        # ``/ float(len(self.walk_times))``.  One character of difference and
+        # the whole of the read-out above.
+        average = (total / float(n)) if n >= 1 else 0.0
         self.walk_bpm = (60.0 / average) if average else float('inf')
         threshold = SPEED_THRESHOLD_BPM - self.bpm_constraint
         self.speed = 's3' if self.walk_bpm >= threshold else 's1'
@@ -221,9 +261,65 @@ class Player(TriggerHost):
         It sets ``tripBPM`` as well as storing the constraint, so a level that
         sends ``ApplyBpmConstraint:value=50`` is saying "step faster than 50 BPM
         here and you go down".  Only ps1_12 and ps1_23 do that; everywhere else
-        ``tripBPM`` stays at its default 10000 and speed alone cannot trip you."""
-        self.bpm_constraint = float(value)
+        ``tripBPM`` stays at its default 10000 and speed alone cannot trip you.
+
+        **The order is not arbitrary.**  ``setTripBPM:`` runs first
+        (0x100025afc) and only then is the constraint stored (0x100025b3c) -
+        which matters because the setter refuses to do anything once a
+        constraint is in place.  Doing it the other way round would make the
+        constraint unable to apply itself."""
         self.trip_bpm = float(value)
+        self.bpm_constraint = float(value)
+
+    # ------------------------------------------------------------ tripBPM
+    #
+    # ``tripBPM`` is a real method, not a synthesised accessor, and what it does
+    # decides whether the ice levels are playable.
+    #
+    #   -[PGEPlayer setTripBPM:]   0x100025e38
+    #       if (value == _tripBPM)       return;      # 0x100025e44
+    #       if (bpm_constaint != 0.0f)   return;      # 0x100025e58
+    #       _tripBPM = value;
+    #       [self resetBPM];                          # 0x100025e68
+    #
+    # ``-[PGELevel playerMovedToPosition:]`` sends this on **every step**, so
+    # the first clause is doing real work: walking on one surface changes
+    # nothing, and only crossing onto ground with a different tripBPM reaches
+    # ``resetBPM``.
+    #
+    # **Crossing onto different ground therefore throws the tempo history
+    # away.**  That is the whole safety valve of a thin-ice level.  Without it
+    # the check that runs as you take your second step on the ice is computed
+    # from the four intervals *before* the ice - so on ps1_19, where the first
+    # ice band is four steps from where you start, walking the snow at a normal
+    # pace and then slowing right down for the ice still read 113 BPM against
+    # the ice's tripBPM of 80 and put you straight on the ground.  Slowing down
+    # could not help, because ``checkStepBPM`` runs before the new step is
+    # recorded and the window is four intervals long: by the time the reading
+    # caught up you had already fallen.  Reported from ps1_19 and ps1_23 as
+    # "six really slow steps, then one more at the same speed or slower and I
+    # just randomly trip".  With the reset the ice is measured only from steps
+    # taken *on* the ice, which is what makes the rhythm learnable.
+    #
+    # The second clause is ps1_23's siren: ``ApplyBpmConstraint:value=50``
+    # leaves ``bpm_constaint`` non-zero, and from that moment **no surface can
+    # move tripBPM again**.  The constraint is meant to last the rest of the
+    # level; a plain assignment let the very next step overwrite it and the
+    # dilemma stopped costing anything at all.
+    @property
+    def trip_bpm(self) -> float:
+        """``-[PGEPlayer tripBPM]`` (0x100028a44) - the plain ivar read."""
+        return self._trip_bpm
+
+    @trip_bpm.setter
+    def trip_bpm(self, value: float) -> None:
+        value = float(value)
+        if value == self._trip_bpm:
+            return
+        if self.bpm_constraint != 0.0:
+            return
+        self._trip_bpm = value
+        self.reset_bpm()
 
     # -------------------------------------------------------------- moving
     def move_forward_one_step(self, foot: str, now: float) -> bool:
@@ -411,12 +507,26 @@ class Player(TriggerHost):
                 sound.play()
 
         self.trigger('OnTrip')
+        # ``snarl`` is not in the original's payload.  [REQUESTED] Going down is
+        # the loudest thing you can do and it has to be answered by a sound: on
+        # ground that alerts on every step the enemy is already holding a
+        # wanted position, and the state 4 latch would then re-aim it in
+        # silence, so something arrived out of nowhere.  See DIVERGENCES 4c.
         self.bus.post('PGE_MESSAGE_AlertAllEnemies',
-                      {'position': self.position, 'to': 'position'})
+                      {'position': self.position, 'to': 'position',
+                       'snarl': True})
 
     # ------------------------------------------------------------ handlers
     def _on_step(self, _name: str, params: Params) -> None:
-        self.move_forward_one_step(params.get('lastFoot', 'N'), self.bus.now)
+        # Stamp the step with the moment the key went down, not with the frame
+        # the message is delivered on.  ``updateBPMCounter`` reads the clock
+        # itself in the original, and it runs on the same call as the touch, so
+        # the touch's own instant is the faithful one; taking ``bus.now``
+        # quantised every interval to the previous frame.
+        when = params.get('time')
+        self.move_forward_one_step(params.get('lastFoot', 'N'),
+                                   float(when) if when is not None
+                                   else self.bus.now)
 
     def _on_trip_action(self, _name: str, _params: Params) -> None:
         if self.state != STATE_TRIPPED:
