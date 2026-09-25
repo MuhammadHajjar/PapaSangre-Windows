@@ -175,7 +175,7 @@ def test_every_cmd_launcher_has_a_command_twin():
         assert os.path.exists(os.path.join(run, twin)), twin
         body = open(os.path.join(run, twin), encoding='utf-8').read()
         assert body.startswith('#!/bin/bash'), twin
-        assert 'Play Papa Sangre.app/Contents/MacOS' in body, twin
+        assert 'Papa Sangre.app/Contents/MacOS/Papa Sangre' in body, twin
         # the level the .cmd launches is the level the .command launches
         level_cmd = open(os.path.join(run, name),
                          encoding='utf-8').read().split()[-1]
@@ -198,15 +198,16 @@ def test_build_script_uses_the_platform_separator():
 def test_build_script_names_the_app_per_platform():
     import tools.build_exes as be
     if host.MAC:
+        assert be.GAME_NAME == 'Papa Sangre'
+    else:
         assert be.GAME_NAME == 'Play Papa Sangre'
-    # the game target is shared; only the extension differs
     assert be.TARGETS['play'][1] == be.GAME_NAME
 
 
 def test_pack_release_names_the_archive_for_the_platform():
     import tools.pack_release as pr
     if host.MAC:
-        assert pr.GAME == 'Play Papa Sangre.app'
+        assert pr.GAME == 'Papa Sangre.app'
     elif host.WINDOWS:
         assert pr.GAME == 'Play Papa Sangre.exe'
 

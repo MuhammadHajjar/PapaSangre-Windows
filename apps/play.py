@@ -3,7 +3,7 @@
 Runs the recovered engine on the original's own maps, sounds and scripts, and
 chains from one level to the next the way the game does: the exit's win
 narration ends, which fires ``LoadLevelWithName``.  Built for Windows and
-macOS: ``Play Papa Sangre.exe`` on one, ``Play Papa Sangre.app`` on the other,
+macOS: ``Play Papa Sangre.exe`` on one, ``Papa Sangre.app`` on the other,
 same game, same keys, screen reader chosen by the platform.
 
 Opens on a spoken menu: Continue, Choose level, Options, Credits, Quit.  Up

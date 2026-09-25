@@ -2,7 +2,7 @@
 
 Takes ``Run/`` and makes the one archive that gets handed to someone else:
 **the game, and nothing else** - ``Play Papa Sangre.exe`` on a Windows
-machine, ``Play Papa Sangre.app`` on a Mac.  Diagnostic tools, launchers,
+machine, ``Papa Sangre.app`` on a Mac.  Diagnostic tools, launchers,
 config, recordings and save files all stay behind, for the same reasons the
 Windows build always refused them.
 
@@ -24,7 +24,7 @@ from papasangre.util import host                            # noqa: E402
 RUN = os.path.join(ROOT, 'Run')
 DIST = os.path.join(ROOT, 'dist')
 
-GAME = ('Play Papa Sangre.app' if host.MAC else 'Play Papa Sangre.exe')
+GAME = ('Papa Sangre.app' if host.MAC else 'Play Papa Sangre.exe')
 
 #: The release, in full.
 ALWAYS = (GAME,)
